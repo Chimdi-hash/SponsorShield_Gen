@@ -1,0 +1,39 @@
+# =============================================================================
+# requirements.txt — SponsorShield Python Dependencies
+#
+# Install with: pip install -r requirements.txt
+#
+# Keep this list minimal — the GenVM runtime bundles its own standard library.
+# Do NOT add requests, aiohttp, web3, or other packages here; those are
+# either provided by the GenVM sandbox or are disallowed inside contracts.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Core — GenLayer framework SDK
+#
+# Provides: genlayer, gl.Contract, TreeMap, gl.nondet.*, gl.eq_principle.*
+# This is the ONLY runtime import needed by the Intelligent Contract itself.
+# ---------------------------------------------------------------------------
+genlayer>=0.5.0
+
+# ---------------------------------------------------------------------------
+# Testing — GenLayer direct-mode test harness
+#
+# Provides: gltest, direct_vm, direct_deploy and all pytest fixtures.
+# Lightweight: runs entirely in-process with no Docker / simulator required.
+# Suitable for low-spec / CI machines.
+# ---------------------------------------------------------------------------
+genlayer-test>=0.5.0
+
+# ---------------------------------------------------------------------------
+# Testing tools
+# ---------------------------------------------------------------------------
+pytest>=7.4.0          # Test runner
+pytest-asyncio>=0.23.0 # Async test support (for future async contract calls)
+
+# ---------------------------------------------------------------------------
+# Optional — Code quality (uncomment if you have spare disk / RAM)
+# ---------------------------------------------------------------------------
+# black>=24.0.0         # Opinion-free formatter
+# mypy>=1.9.0           # Static type checker
+# ruff>=0.4.0           # Fast linter (replaces flake8/isort)

@@ -1,0 +1,111 @@
+# =============================================================================
+# genlayer.toml — SponsorShield Project Configuration
+#
+# This file is the authoritative project manifest for the GenLayer CLI.
+# It describes the project identity, contract registry, network targets,
+# and SDK runtime settings.
+#
+# Reference: https://docs.genlayer.com/cli/configuration
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# [project]  — Project identity
+# ---------------------------------------------------------------------------
+[project]
+name        = "sponsorshield"
+version     = "0.1.0"
+description = "Decentralised sponsorship payout validation using GenLayer's LLM consensus engine."
+authors     = ["SponsorShield Team"]
+license     = "MIT"
+
+# ---------------------------------------------------------------------------
+# [runtime]  — GenVM / py-genlayer SDK pin
+#
+# Must match the hash in the `# { "Depends": ... }` header of every contract.
+# Update this when bumping the SDK version.
+# ---------------------------------------------------------------------------
+[runtime]
+sdk       = "py-genlayer"
+sdk_hash  = "1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6"
+
+# ---------------------------------------------------------------------------
+# [contracts]  — Registry of all Intelligent Contracts in this project
+#
+# Each entry maps a logical alias to the on-disk contract file.
+# The CLI uses these aliases in deploy commands, e.g.:
+#   genlayer deploy --contract sponsor_shield
+# ---------------------------------------------------------------------------
+[contracts]
+sponsor_shield = "contracts/sponsor_shield.py"
+
+# ---------------------------------------------------------------------------
+# [network.localnet]  — Local development network profile (default)
+#
+# Points at the GenLayer simulator running on your machine.
+# Start it with: genlayer up
+# ---------------------------------------------------------------------------
+[network.localnet]
+rpc_url          = "http://127.0.0.1:4000/api"
+chain_id         = 61999
+default_account  = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"    # Hardhat/Anvil test account #0
+validators       = 5      # Number of mock validators spun up locally
+consensus_rounds = 1      # Optimistic Democracy rounds before finality
+
+# ---------------------------------------------------------------------------
+# [network.studio]  — GenLayer Studio (hosted simulator)
+#
+# Use this profile when deploying to the GenLayer cloud simulator.
+# Set your API key in the environment: export GENLAYER_API_KEY="..."
+# ---------------------------------------------------------------------------
+[network.studio]
+rpc_url         = "https://studio.genlayer.com/api"
+chain_id        = 62000
+api_key_env_var = "GENLAYER_API_KEY"
+validators      = 5
+consensus_rounds = 2
+
+# ---------------------------------------------------------------------------
+# [network.testnet]  — Public GenLayer testnet
+#
+# Uncomment and fill when GenLayer testnet credentials are available.
+# ---------------------------------------------------------------------------
+# [network.testnet]
+# rpc_url         = "https://rpc.testnet.genlayer.com"
+# chain_id        = 62001
+# api_key_env_var = "GENLAYER_TESTNET_KEY"
+# validators      = 10
+# consensus_rounds = 3
+
+# ---------------------------------------------------------------------------
+# [deploy]  — Default deployment settings
+# ---------------------------------------------------------------------------
+[deploy]
+# Active network profile used when no --network flag is given on the CLI.
+default_network = "localnet"
+
+# Constructor arguments passed to SponsorShield.__init__ on first deploy.
+# SponsorShield takes no constructor arguments, so this is empty.
+[deploy.sponsor_shield]
+contract    = "sponsor_shield"
+constructor_args = []
+
+# ---------------------------------------------------------------------------
+# [llm]  — LLM backend configuration (local / direct-mode testing)
+#
+# In production these settings are controlled by the network validators.
+# In direct-mode tests, gltest reads these to configure mock LLM responses.
+# ---------------------------------------------------------------------------
+[llm]
+default_provider = "openai"
+model            = "gpt-4o-mini"    # Lightweight model — fast on low-spec machines
+
+# ---------------------------------------------------------------------------
+# [test]  — Testing configuration
+# ---------------------------------------------------------------------------
+[test]
+# Directories searched by pytest
+directories      = ["tests/direct", "tests/integration"]
+# Default test mode: "direct" (in-memory, no infra) or "studio" (live simulator)
+default_mode     = "direct"
+# Number of mock validators used in direct-mode nondet block simulations
+mock_validators  = 3

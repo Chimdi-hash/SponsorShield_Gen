@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SponsorShield — Decentralised Sponsorship Protocol</title>
+  <meta name="description" content="SponsorShield automates Web3 sponsorship payout validation using GenLayer's decentralised LLM consensus engine." />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ch: '#121214', mint: '#00FFB2', dim: '#00cc8e',
+          },
+          fontFamily: {
+            sans: ['Inter','system-ui','sans-serif'],
+            mono: ['JetBrains Mono','monospace'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    :root {
+      --mint: #00FFB2;
+      --mint-dim: #00cc8e;
+      --mint-glow: rgba(0,255,178,0.18);
+      --mint-glow-sm: rgba(0,255,178,0.10);
+      --bg: #121214;
+      --surface: #18181c;
+      --surface-2: #1e1e24;
+      --border: #2a2a38;
+      --border-2: #222230;
+      --txt: #e2e2ea;
+      --muted: #6b6b88;
+      --muted-2: #9090b0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--txt);
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* ═══ PARTICLE CANVAS ═══ */
+    #particle-canvas {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      opacity: 0.55;
+    }
+
+    /* ═══ SCAN LINE ═══ */
+    .scan-line {
+      position: fixed; left: 0; right: 0; height: 2px; z-index: 1; pointer-events: none;
+      background: linear-gradient(90deg, transparent, var(--mint), transparent);
+      animation: scanDown 6s linear infinite;
+      opacity: 0.12;
+    }
+    @keyframes scanDown {
+      0%   { top: -2px; }
+      100% { top: 100vh; }
+    }
+
+    /* ═══ GRID BG ═══ */
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(0,255,178,0.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,178,0.028) 1px, transparent 1px);
+      background-size: 52px 52px;
+      mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 20%, transparent 90%);
+    }
+
+    /* ═══ HERO GLOW ORBS ═══ */
+    .orb {
+      position: absolute; border-radius: 50%; pointer-events: none; z-index: 0;
+      filter: blur(80px);
+      animation: orbFloat 8s ease-in-out infinite;
+    }
+    .orb-1 {
+      width: 420px; height: 220px; top: -60px; left: 50%;
+      transform: translateX(-50%);
+      background: radial-gradient(ellipse, rgba(0,255,178,0.13), transparent 70%);
+      animation-delay: 0s;
+    }
+    .orb-2 {
+      width: 280px; height: 280px; top: 20px; right: -80px;
+      background: radial-gradient(ellipse, rgba(0,200,255,0.07), transparent 70%);
+      animation-delay: -3s;
+    }
+    @keyframes orbFloat {
+      0%,100% { transform: translateX(-50%) translateY(0);   }
+      50%      { transform: translateX(-50%) translateY(-18px); }
+    }
+
+    /* ═══ GLASS CARD ═══ */
+    .glass-card {
+      background: linear-gradient(150deg, rgba(28,28,34,0.92) 0%, rgba(20,20,26,0.97) 100%);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      box-shadow: 0 4px 32px rgba(0,0,0,0.55);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+    }
+    .glass-card:hover {
+      border-color: rgba(0,255,178,0.2);
+      box-shadow: 0 8px 48px rgba(0,255,178,0.1);
+      transform: translateY(-2px);
+    }
+
+    /* ═══ INPUTS ═══ */
+    .mint-input {
+      display: block; width: 100%;
+      background: #0f0f13;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--txt);
+      padding: 0.8rem 1rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+    }
+    .mint-input:focus {
+      border-color: var(--mint);
+      box-shadow: 0 0 0 3px rgba(0,255,178,0.12), 0 0 16px rgba(0,255,178,0.08);
+      background: #111117;
+    }
+    .mint-input::placeholder { color: #3a3a50; }
+    .mint-input.error { border-color: #ff4466; box-shadow: 0 0 0 3px rgba(255,68,102,0.1); }
+    .field-error { color: #ff6685; font-size: 0.75rem; margin-top: 5px; display: none; }
+    .field-error.show { display: block; animation: fadeSlideIn 0.2s ease; }
+
+    /* ═══ BUTTONS ═══ */
+    .btn-mint {
+      position: relative; overflow: hidden;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      background: linear-gradient(135deg, var(--mint) 0%, var(--mint-dim) 100%);
+      color: #060810;
+      font-weight: 800; font-size: 0.88rem; letter-spacing: 0.025em;
+      padding: 0.85rem 1.8rem;
+      border-radius: 12px; border: none; cursor: pointer;
+      transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1),
+                  box-shadow 0.25s ease, opacity 0.2s;
+      box-shadow: 0 0 20px rgba(0,255,178,0.3), 0 4px 16px rgba(0,0,0,0.4);
+      white-space: nowrap;
+    }
+    .btn-mint::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, #ffffff30, transparent 60%);
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .btn-mint:hover:not(:disabled)::before { opacity: 1; }
+    .btn-mint:hover:not(:disabled) {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 0 36px rgba(0,255,178,0.5), 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .btn-mint:active:not(:disabled) { transform: translateY(0) scale(0.99); }
+    .btn-mint:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* Ripple */
+    .ripple {
+      position: absolute; border-radius: 50%;
+      background: rgba(255,255,255,0.35);
+      transform: scale(0); animation: rippleAnim 0.55s linear;
+      pointer-events: none;
+    }
+    @keyframes rippleAnim {
+      to { transform: scale(4); opacity: 0; }
+    }
+
+    .btn-ghost {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      background: transparent; color: var(--muted);
+      font-weight: 600; font-size: 0.83rem;
+      padding: 0.75rem 1.2rem;
+      border-radius: 10px; border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .btn-ghost:hover { border-color: rgba(0,255,178,0.45); color: var(--mint); background: rgba(0,255,178,0.06); }
+    .btn-ghost:active { transform: scale(0.97); }
+
+    /* ═══ TABS ═══ */
+    .tab-nav {
+      display: flex; align-items: center; gap: 4px;
+      padding: 5px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .tab-nav::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+      position: relative; flex-shrink: 0;
+      display: flex; align-items: center; gap: 6px;
+      padding: 0.6rem 1.1rem;
+      font-size: 0.82rem; font-weight: 700; letter-spacing: 0.01em;
+      background: transparent; border: none; cursor: pointer;
+      color: var(--muted); border-radius: 10px;
+      transition: color 0.25s, background 0.25s;
+      white-space: nowrap;
+    }
+    .tab-btn .tab-icon { width: 15px; height: 15px; flex-shrink: 0; transition: filter 0.25s; }
+    .tab-btn.active {
+      color: #060810;
+      background: linear-gradient(135deg, var(--mint), var(--mint-dim));
+      box-shadow: 0 0 16px rgba(0,255,178,0.35);
+    }
+    .tab-btn.active .tab-icon { filter: brightness(0.1); }
+
+    /* ═══ STEP TRACKER ═══ */
+    .step-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px; border-radius: 10px;
+      font-size: 0.8rem; font-weight: 500;
+      border: 1px solid transparent;
+      transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    .step-item .step-num {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.68rem; font-weight: 800; flex-shrink: 0;
+      transition: all 0.4s ease;
+    }
+    .step-item.waiting { background: var(--surface-2); border-color: var(--border-2); color: #3a3a52; }
+    .step-item.waiting .step-num { background: var(--border); color: #3a3a52; }
+    .step-item.active  { background: rgba(255,200,70,0.08); border-color: rgba(255,200,70,0.35); color: #ffc846; }
+    .step-item.active .step-num  { background: #ffc846; color: #0a0800; animation: stepPulse 1s ease-in-out infinite; }
+    .step-item.done    { background: rgba(0,255,178,0.07); border-color: rgba(0,255,178,0.25); color: var(--mint); }
+    .step-item.done .step-num    { background: var(--mint); color: #060810; }
+
+    @keyframes stepPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(255,200,70,0.5); } 50%{ box-shadow:0 0 0 6px rgba(255,200,70,0); } }
+
+    /* ═══ PROGRESS BAR ═══ */
+    .progress-track {
+      height: 4px; background: var(--border); border-radius: 99px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 99px;
+      background: linear-gradient(90deg, var(--mint), #00c8ff);
+      transition: width 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      box-shadow: 0 0 8px rgba(0,255,178,0.6);
+    }
+
+    /* ═══ BADGES ═══ */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 99px;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .badge-pending  { background: rgba(124,97,2,0.3);   color: #ffc846; border: 1px solid rgba(255,200,70,0.3); }
+    .badge-approved { background: rgba(0,255,178,0.1);  color: var(--mint); border: 1px solid rgba(0,255,178,0.35); }
+    .badge-rejected { background: rgba(255,59,59,0.1);  color: #ff6b7a; border: 1px solid rgba(255,59,59,0.3); }
+    .badge-active   { background: rgba(0,255,178,0.1);  color: var(--mint); border: 1px solid rgba(0,255,178,0.35); }
+    .badge-closed   { background: rgba(255,59,59,0.1);  color: #ff6b7a; border: 1px solid rgba(255,59,59,0.3); }
+
+    /* ═══ SPINNER ═══ */
+    .spinner {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2.5px solid rgba(6,8,16,0.2);
+      border-top-color: #060810;
+      animation: spin 0.75s linear infinite; flex-shrink: 0;
+    }
+    .spinner-mint {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2.5px solid rgba(0,255,178,0.15);
+      border-top-color: var(--mint);
+      animation: spin 0.75s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ═══ TOAST ═══ */
+    #toast-container {
+      position: fixed; top: 1rem; right: 1rem;
+      z-index: 9999; display: flex; flex-direction: column; gap: 10px;
+      pointer-events: none; max-width: calc(100vw - 2rem);
+    }
+    .toast {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 13px 16px; border-radius: 14px; border: 1px solid transparent;
+      backdrop-filter: blur(24px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+      min-width: 280px; max-width: 360px; pointer-events: all;
+      animation: toastIn 0.38s cubic-bezier(0.16,1,0.3,1) forwards;
+    }
+    .toast.leaving { animation: toastOut 0.28s ease forwards; }
+    .toast-success { background: rgba(0,28,18,0.95); border-color: rgba(0,255,178,0.35); }
+    .toast-error   { background: rgba(28,0,8,0.95);  border-color: rgba(255,59,59,0.35); }
+    .toast-info    { background: rgba(0,10,28,0.95); border-color: rgba(59,130,246,0.35); }
+    .toast-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+    .toast-title { font-weight: 800; font-size: 0.85rem; }
+    .toast-msg   { font-size: 0.78rem; color: var(--muted-2); margin-top: 3px; line-height: 1.45; }
+
+    @keyframes toastIn  { from { opacity:0; transform:translateX(100%); } to { opacity:1; transform:translateX(0); } }
+    @keyframes toastOut { from { opacity:1; transform:translateX(0); }   to { opacity:0; transform:translateX(110%); } }
+
+    /* ═══ ANIMATIONS ═══ */
+    @keyframes fadeSlideIn {
+      from { opacity:0; transform:translateY(12px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes fadeIn { from{opacity:0}to{opacity:1} }
+    @keyframes glowPulse {
+      0%,100%{ box-shadow:0 0 20px rgba(0,255,178,0.25); }
+      50%    { box-shadow:0 0 36px rgba(0,255,178,0.55); }
+    }
+    @keyframes borderFlow {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes floatY {
+      0%,100%{ transform: translateY(0); }
+      50%    { transform: translateY(-6px); }
+    }
+    @keyframes shimmer {
+      0%   { background-position: -200% 0; }
+      100% { background-position:  200% 0; }
+    }
+    @keyframes typewriterCursor {
+      0%,100%{ opacity:1; } 50%{ opacity:0; }
+    }
+
+    .panel-enter { animation: fadeSlideIn 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+
+    /* Neon border card on active state */
+    .neon-border {
+      border-image: linear-gradient(135deg, var(--mint), #00c8ff, var(--mint)) 1;
+    }
+
+    /* Shimmer skeleton */
+    .shimmer {
+      background: linear-gradient(90deg, var(--border) 25%, var(--surface-2) 50%, var(--border) 75%);
+      background-size: 400% 100%;
+      animation: shimmer 1.6s ease-in-out infinite;
+      border-radius: 8px;
+    }
+
+    /* Glow pulse for claim button */
+    .glow-pulse { animation: glowPulse 2.2s ease-in-out infinite; }
+
+    /* Floating logo shield */
+    .logo-shield { animation: floatY 4s ease-in-out infinite; }
+
+    /* Cursor blink for typewriter */
+    .tw-cursor {
+      display: inline-block; width: 3px; height: 1em;
+      background: var(--mint); margin-left: 2px;
+      animation: typewriterCursor 0.8s step-end infinite;
+      vertical-align: text-bottom;
+    }
+
+    /* ═══ CODE BLOCK ═══ */
+    .code-block {
+      background: #0a0a0e;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.73rem;
+      line-height: 1.75;
+      overflow-x: auto;
+      color: var(--muted-2);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .code-block::-webkit-scrollbar { height: 4px; }
+    .code-block::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .tok-comment { color: #4a4a6a; }
+    .tok-keyword { color: var(--mint); }
+    .tok-string  { color: #ffc846; }
+    .tok-fn      { color: #c084fc; }
+
+    /* ═══ VERDICT CARD ═══ */
+    .verdict-approved {
+      background: linear-gradient(135deg, rgba(0,40,24,0.9), rgba(0,28,16,0.95));
+      border: 1px solid rgba(0,255,178,0.4);
+      border-radius: 16px; padding: 20px;
+      animation: fadeSlideIn 0.4s ease;
+    }
+    .verdict-rejected {
+      background: linear-gradient(135deg, rgba(40,0,12,0.9), rgba(28,0,8,0.95));
+      border: 1px solid rgba(255,59,59,0.4);
+      border-radius: 16px; padding: 20px;
+      animation: fadeSlideIn 0.4s ease;
+    }
+
+    /* ═══ MONO ═══ */
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ═══ SCROLLBAR ═══ */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #0a0a0d; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,255,178,0.4); }
+
+    /* ═══ WALLET BUTTON ═══ */
+    #wallet-btn {
+      position: relative;
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,255,178,0.45);
+      background: linear-gradient(135deg, rgba(0,255,178,0.12) 0%, rgba(0,255,178,0.05) 100%);
+      color: var(--mint);
+      font-size: 0.8rem; font-weight: 700;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      white-space: nowrap;
+      box-shadow: 0 0 12px rgba(0,255,178,0.1);
+      flex-shrink: 0;
+    }
+    #wallet-btn:hover {
+      border-color: var(--mint);
+      background: linear-gradient(135deg, rgba(0,255,178,0.22) 0%, rgba(0,255,178,0.1) 100%);
+      box-shadow: 0 0 24px rgba(0,255,178,0.25);
+      transform: translateY(-1px);
+    }
+    #wallet-btn:active { transform: translateY(0); }
+    #wallet-btn.connected {
+      border-color: rgba(0,255,178,0.35);
+      background: rgba(0,255,178,0.08);
+      color: var(--mint);
+    }
+    #wallet-btn.loading {
+      pointer-events: none; opacity: 0.7;
+    }
+    #wallet-btn-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
+      transition: background 0.4s, box-shadow 0.4s;
+    }
+    #wallet-btn-dot.connected {
+      background: var(--mint);
+      box-shadow: 0 0 6px rgba(0,255,178,0.9);
+      animation: stepPulse 2s infinite;
+    }
+    #wallet-btn-dot.pulse {
+      background: #ffc846;
+      box-shadow: 0 0 6px rgba(255,200,70,0.9);
+      animation: stepPulse 0.8s infinite;
+    }
+
+    /* Wallet dropdown panel */
+    #wallet-dropdown {
+      position: absolute; top: calc(100% + 10px); right: 0;
+      width: 280px;
+      background: linear-gradient(150deg, rgba(24,24,30,0.98) 0%, rgba(16,16,22,0.99) 100%);
+      border: 1px solid rgba(0,255,178,0.25);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,255,178,0.06);
+      backdrop-filter: blur(24px);
+      padding: 16px;
+      z-index: 1000;
+      opacity: 0; transform: translateY(-8px) scale(0.97);
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16,1,0.3,1);
+    }
+    #wallet-dropdown.open {
+      opacity: 1; transform: translateY(0) scale(1);
+      pointer-events: all;
+    }
+    .wallet-dropdown-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    }
+    .wallet-avatar {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: linear-gradient(135deg, rgba(0,255,178,0.3), rgba(0,200,255,0.2));
+      border: 2px solid rgba(0,255,178,0.4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+    }
+    .wallet-info-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px; }
+    .wallet-address { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: white; font-weight: 600; }
+    .wallet-network-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      margin-bottom: 10px;
+      font-size: 0.75rem;
+    }
+    .wallet-net-badge {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--mint); font-weight: 700;
+    }
+    .wallet-net-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 5px rgba(0,255,178,0.9); }
+    .wallet-disconnect-btn {
+      width: 100%; padding: 9px 12px;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      border-radius: 10px; border: 1px solid rgba(255,59,59,0.3);
+      background: rgba(255,59,59,0.06); color: #ff6b7a;
+      font-size: 0.8rem; font-weight: 700; cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .wallet-disconnect-btn:hover {
+      background: rgba(255,59,59,0.14); border-color: rgba(255,59,59,0.5);
+      transform: translateY(-1px);
+    }
+
+    /* Wallet overlay (mobile) */
+    #wallet-overlay {
+      display: none; position: fixed; inset: 0; z-index: 998;
+      background: rgba(0,0,0,0.01);
+    }
+    #wallet-overlay.open { display: block; }
+
+    /* ═══ VALIDATOR NODES VIZ ═══ */
+    .validator-node {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      font-size: 0.68rem; color: var(--muted); font-family: 'JetBrains Mono', monospace;
+    }
+    .vnode-ring {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; color: var(--muted);
+      transition: all 0.4s ease;
+    }
+    .vnode-ring.active {
+      border-color: var(--mint);
+      box-shadow: 0 0 16px rgba(0,255,178,0.5);
+      color: var(--mint);
+      animation: stepPulse 1s ease-in-out infinite;
+    }
+    .vnode-ring.done {
+      border-color: var(--mint); background: rgba(0,255,178,0.12); color: var(--mint);
+    }
+
+    /* ═══ PROFESSIONAL MOBILE RESPONSIVENESS ═══ */
+
+    /* Tablet — 768px */
+    @media (max-width: 768px) {
+      /* Navbar */
+      nav { padding-top: 0.85rem !important; padding-bottom: 0.85rem !important; }
+
+      /* Hero */
+      header > div:last-child { padding-top: 1.2rem !important; padding-bottom: 1.5rem !important; }
+      .stat-pill { font-size: 0.73rem !important; padding: 5px 11px !important; }
+
+      /* Form buttons */
+      #sponsor-form div[style*="display:flex"] { flex-direction: column; }
+      #btn-create-campaign { min-width: unset !important; width: 100% !important; }
+      #btn-reset-sponsor { width: 100% !important; }
+
+      /* Cards */
+      .glass-card { border-radius: 16px; }
+
+      /* Status lookup */
+      #panel-status .glass-card div[style*="flex:1"] { min-width: unset !important; }
+    }
+
+    /* Mobile — 640px */
+    @media (max-width: 640px) {
+      /* Toast */
+      #toast-container { top: 0; right: 0; left: 0; padding: 0.5rem; border-radius: 0; }
+      .toast { min-width: unset; max-width: 100%; border-radius: 12px; }
+
+      /* Hero heading */
+      h1 { font-size: clamp(1.6rem, 7vw, 2rem) !important; line-height: 1.2 !important; }
+
+      /* Stat pills — wrap cleanly */
+      .flex.flex-wrap.gap-3 { gap: 8px !important; }
+
+      /* Tab nav — scrollable, show icons only */
+      .tab-nav { gap: 3px; padding: 4px; border-radius: 12px; }
+      .tab-btn { padding: 0.55rem 0.9rem; font-size: 0.78rem; }
+      .tab-btn .tab-label { display: none; }
+
+      /* Panels */
+      .glass-card { border-radius: 14px; }
+      .glass-card.p-6 { padding: 1rem !important; }
+      .glass-card.p-6.sm\:p-8 { padding: 1.1rem !important; }
+
+      /* Sponsor form buttons stack */
+      #sponsor-form > div:last-child { flex-direction: column !important; gap: 8px !important; }
+      #btn-create-campaign { min-width: unset !important; }
+
+      /* Creator form */
+      #btn-claim-payout { font-size: 0.86rem !important; }
+
+      /* Validator nodes — wrap tighter */
+      #validation-progress div[style*="display:flex"][style*="gap:16px"] {
+        gap: 10px !important; justify-content: center;
+      }
+
+      /* Status search row */
+      #panel-status .glass-card div[style*="flex-wrap:wrap"] {
+        flex-direction: column;
+      }
+      #btn-lookup { width: 100% !important; }
+      #status-campaign-id { width: 100% !important; }
+
+      /* Footer */
+      footer div { flex-direction: column; align-items: flex-start !important; gap: 6px !important; }
+
+      /* Wallet dropdown — full width on mobile */
+      #wallet-dropdown { width: calc(100vw - 2rem); right: -0.5rem; }
+    }
+
+    /* Small mobile — 480px */
+    @media (max-width: 480px) {
+      /* Navbar — tighten */
+      nav { gap: 8px !important; }
+      /* Logo subtitle hide on tiny screens */
+      nav div.flex.items-center.gap-3 > div > div:last-child { display: none; }
+
+      /* Wallet button — compact */
+      #wallet-btn { padding: 8px 12px; font-size: 0.75rem; gap: 6px; }
+
+      /* Hero tag */
+      header p.mono { font-size: 0.6rem !important; }
+
+      /* Buttons */
+      .btn-mint { padding: 0.78rem 1rem; font-size: 0.84rem; }
+      .btn-ghost { padding: 0.68rem 1rem; font-size: 0.78rem; }
+
+      /* Tabs — icon only with minimal padding */
+      .tab-btn { padding: 0.5rem 0.7rem; }
+      .tab-btn .tab-icon { width: 17px; height: 17px; }
+
+      /* Code blocks */
+      .code-block { font-size: 0.68rem; padding: 10px; }
+
+      /* Campaign result */
+      #campaign-id-result { padding: 12px !important; }
+      #campaign-id-value { font-size: 0.75rem !important; }
+    }
+
+    /* Extra small — 360px */
+    @media (max-width: 360px) {
+      nav { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+      main { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+      header > div:last-child { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+      h1 { font-size: 1.45rem !important; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Particle canvas -->
+  <canvas id="particle-canvas"></canvas>
+  <!-- Scan line -->
+  <div class="scan-line"></div>
+  <!-- Grid -->
+  <div class="grid-bg"></div>
+  <!-- Toast -->
+  <div id="toast-container" aria-live="polite" role="status"></div>
+
+  <!-- ════════════════════════════════════════════
+       HEADER
+  ════════════════════════════════════════════ -->
+  <header class="relative z-10 border-b" style="border-color:var(--border);">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+
+    <!-- Navbar -->
+    <nav class="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+      <!-- Logo -->
+      <div class="flex items-center gap-3">
+        <div class="logo-shield w-10 h-10 rounded-2xl flex items-center justify-center relative"
+             style="background:linear-gradient(135deg,rgba(0,255,178,0.2),rgba(0,255,178,0.05));border:1px solid rgba(0,255,178,0.4);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--mint)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <polyline points="9 12 11 14 15 10"/>
+          </svg>
+          <div style="position:absolute;inset:-1px;border-radius:inherit;background:linear-gradient(135deg,rgba(0,255,178,0.15),transparent);pointer-events:none;"></div>
+        </div>
+        <div>
+          <div class="font-black text-white tracking-tight" style="font-size:1.05rem;">SponsorShield</div>
+          <div class="mono text-xs" style="color:var(--muted);font-size:0.65rem;letter-spacing:0.05em;">POWERED BY GENLAYER</div>
+        </div>
+      </div>
+
+      <!-- Wallet button with dropdown -->
+      <div style="position:relative;flex-shrink:0;z-index:1001;">
+        <button id="wallet-btn" onclick="WalletUI.toggle(event)" aria-label="Connect wallet" aria-haspopup="true">
+          <span id="wallet-btn-dot"></span>
+          <span id="wallet-btn-label" style="font-family:'JetBrains Mono',monospace;">Connect Wallet</span>
+          <svg id="wallet-btn-chevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="transition:transform 0.2s ease;flex-shrink:0;">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+        <!-- Dropdown panel -->
+        <div id="wallet-dropdown" role="menu" aria-label="Wallet options">
+          <!-- Not connected state -->
+          <div id="wdrop-disconnected">
+            <div style="text-align:center;padding:8px 0 16px;">
+              <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,rgba(0,255,178,0.15),rgba(0,200,255,0.08));border:1px solid rgba(0,255,178,0.3);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+                <svg width="22" height="22" fill="none" stroke="var(--mint)" stroke-width="2" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              </div>
+              <div style="color:white;font-weight:800;font-size:0.88rem;margin-bottom:5px;">Connect Your Wallet</div>
+              <div style="color:var(--muted);font-size:0.73rem;line-height:1.5;">Connect to GenLayer localnet to deploy campaigns and claim payouts.</div>
+            </div>
+            <button id="btn-do-connect" class="btn-mint" style="width:100%;justify-content:center;" onclick="WalletUI.connect()">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Connect to GenLayer
+            </button>
+            <div style="text-align:center;margin-top:10px;font-size:0.68rem;color:var(--muted);">
+              GenLayer Localnet &nbsp;·&nbsp; Port 4000
+            </div>
+          </div>
+          <!-- Connected state -->
+          <div id="wdrop-connected" style="display:none;">
+            <div class="wallet-dropdown-header">
+              <div class="wallet-avatar">🔐</div>
+              <div>
+                <div class="wallet-info-label">Connected Account</div>
+                <div class="wallet-address" id="wdrop-address">0x0000…0000</div>
+              </div>
+            </div>
+            <div class="wallet-network-row">
+              <span style="color:var(--muted);font-size:0.73rem;">Network</span>
+              <span class="wallet-net-badge"><span class="wallet-net-dot"></span>GenLayer Localnet</span>
+            </div>
+            <div style="padding:8px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);margin-bottom:10px;">
+              <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Contract</div>
+              <div class="mono" style="font-size:0.72rem;color:var(--mint);" id="wdrop-contract">0x0000…0000</div>
+            </div>
+            <button class="wallet-disconnect-btn" onclick="WalletUI.disconnect()">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Disconnect Wallet
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Click-outside overlay -->
+      <div id="wallet-overlay" onclick="WalletUI.close()"></div>
+    </nav>
+
+    <!-- Hero -->
+    <div class="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pb-10 pt-5">
+      <p class="mono font-bold uppercase mb-4" style="color:var(--mint);font-size:0.7rem;letter-spacing:0.2em;">
+        ◈ Intelligent Contract Interface
+      </p>
+      <h1 id="hero-title" class="font-black tracking-tight text-white leading-tight mb-4" style="font-size:clamp(1.8rem,5vw,3.4rem);">
+        Automate Sponsorship<br/>
+        <span id="tw-text" style="background:linear-gradient(90deg,var(--mint),#00d8ff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;background-size:200%;animation:borderFlow 4s ease infinite;"></span><span class="tw-cursor" id="tw-cursor"></span>
+      </h1>
+      <p style="color:var(--muted-2);font-size:0.92rem;max-width:520px;line-height:1.7;">
+        Sponsors set plain-English rules. GenLayer's decentralised LLM validators scrape
+        the creator's proof URL and reach consensus — no middlemen, no trust required.
+      </p>
+
+      <!-- Stat pills -->
+      <div class="flex flex-wrap gap-3 mt-6">
+        <div class="stat-pill" style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:99px;background:var(--surface);border:1px solid var(--border);font-size:0.78rem;color:var(--muted-2);">
+          <span style="color:var(--mint);font-weight:800;" id="stat-campaigns">0</span> Campaigns Live
+        </div>
+        <div class="stat-pill" style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:99px;background:var(--surface);border:1px solid var(--border);font-size:0.78rem;color:var(--muted-2);">
+          <span style="color:var(--mint);font-weight:800;">5</span> Validators Active
+        </div>
+        <div class="stat-pill" style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:99px;background:var(--surface);border:1px solid var(--border);font-size:0.78rem;color:var(--muted-2);">
+          <span style="color:var(--mint);font-weight:800;font-size:0.7rem;">100%</span> On-chain Consensus
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ════════════════════════════════════════════
+       MAIN
+  ════════════════════════════════════════════ -->
+  <main class="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8">
+
+    <!-- Tab nav -->
+    <div class="tab-nav mb-8 w-full sm:w-auto">
+      <button id="tab-sponsor" class="tab-btn active" onclick="App.switchTab('sponsor')">
+        <svg class="tab-icon" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+        <span class="tab-label">Sponsor Portal</span>
+      </button>
+      <button id="tab-creator" class="tab-btn" onclick="App.switchTab('creator')">
+        <svg class="tab-icon" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span class="tab-label">Creator Portal</span>
+      </button>
+      <button id="tab-status" class="tab-btn" onclick="App.switchTab('status')">
+        <svg class="tab-icon" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span class="tab-label">Campaign Status</span>
+      </button>
+    </div>
+
+    <!-- ════════════════ SPONSOR PANEL ════════════════ -->
+    <div id="panel-sponsor" class="panel">
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+        <!-- Form -->
+        <div class="lg:col-span-3 glass-card p-6 sm:p-8">
+          <div class="flex items-center gap-3 mb-6">
+            <div style="width:36px;height:36px;border-radius:10px;background:rgba(0,255,178,0.12);border:1px solid rgba(0,255,178,0.25);display:flex;align-items:center;justify-content:center;">
+              <svg width="16" height="16" fill="none" stroke="var(--mint)" stroke-width="2.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+            </div>
+            <div>
+              <h2 class="text-white font-black" style="font-size:1.05rem;">Create Campaign</h2>
+              <p style="color:var(--muted);font-size:0.75rem;">Deploy a new sponsorship campaign on GenLayer</p>
+            </div>
+          </div>
+
+          <form id="sponsor-form" onsubmit="SDK.createCampaign(event)" novalidate>
+            <!-- Amount -->
+            <div style="margin-bottom:1.25rem;">
+              <label for="reward-amount" style="display:block;font-size:0.83rem;font-weight:700;color:#c8c8e0;margin-bottom:8px;">
+                Sponsorship Reward Amount <span style="color:var(--muted);font-weight:400;">(GL tokens)</span>
+              </label>
+              <div style="position:relative;">
+                <input id="reward-amount" type="number" min="1" placeholder="e.g. 500"
+                       class="mint-input" style="padding-right:3.5rem;" required
+                       oninput="App.clearError('reward-amount')" />
+                <span class="mono" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:0.75rem;font-weight:800;color:var(--mint);">GL</span>
+              </div>
+              <div id="err-reward-amount" class="field-error">Please enter a valid reward amount (min 1 GL).</div>
+            </div>
+
+            <!-- Rules -->
+            <div style="margin-bottom:1.25rem;">
+              <label for="campaign-rules" style="display:block;font-size:0.83rem;font-weight:700;color:#c8c8e0;margin-bottom:8px;">
+                Campaign Validation Rules <span style="color:var(--muted);font-weight:400;">(plain English)</span>
+              </label>
+              <textarea id="campaign-rules" rows="5" required
+                        class="mint-input" style="resize:none;"
+                        placeholder="e.g. Post a tweet mentioning @SponsorShield with #Web3Sponsor. Must have ≥50 likes and be publicly visible."
+                        oninput="App.clearError('campaign-rules')"></textarea>
+              <div id="err-campaign-rules" class="field-error">Please describe your campaign's validation rules.</div>
+              <p style="color:var(--muted);font-size:0.73rem;margin-top:6px;">
+                GenLayer's LLM validators read these rules verbatim when evaluating creator proofs.
+              </p>
+            </div>
+
+            <!-- Buttons -->
+            <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:4px;">
+              <button type="submit" id="btn-create-campaign" class="btn-mint" style="flex:1;min-width:200px;"
+                      onclick="App.addRipple(event)">
+                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Deploy Campaign to GenLayer
+              </button>
+              <button type="button" class="btn-ghost" id="btn-reset-sponsor"
+                      onclick="App.resetSponsorForm()">
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+                Reset
+              </button>
+            </div>
+          </form>
+
+          <!-- Deployed result -->
+          <div id="campaign-id-result" style="display:none;margin-top:20px;padding:18px;border-radius:14px;border:1px solid rgba(0,255,178,0.3);background:rgba(0,255,178,0.05);animation:fadeSlideIn 0.4s ease;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <div style="width:28px;height:28px;border-radius:8px;background:rgba(0,255,178,0.15);border:1px solid rgba(0,255,178,0.3);display:flex;align-items:center;justify-content:center;">
+                <svg width="13" height="13" fill="none" stroke="var(--mint)" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div>
+                <div style="color:var(--mint);font-weight:800;font-size:0.82rem;">Campaign Deployed Successfully</div>
+                <div style="color:var(--muted);font-size:0.7rem;">Share this ID with your creator</div>
+              </div>
+            </div>
+            <div style="font-size:0.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">Your Campaign ID</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <code id="campaign-id-value" class="mono" style="color:var(--mint);font-size:0.85rem;background:var(--surface);padding:8px 14px;border-radius:10px;border:1px solid var(--border);flex:1;overflow:hidden;text-overflow:ellipsis;"></code>
+              <button class="btn-ghost" id="btn-copy-id" onclick="App.copyToClipboard('campaign-id-value', 'btn-copy-id')" style="padding:8px 12px;font-size:0.75rem;">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right side -->
+        <div class="lg:col-span-2 flex flex-col gap-5">
+          <!-- SDK card -->
+          <div class="glass-card p-6">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <div style="width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 6px rgba(0,255,178,0.8);"></div>
+              <h3 style="font-size:0.82rem;font-weight:800;color:white;">GenLayerJS SDK Call</h3>
+            </div>
+            <div class="code-block">
+              <span class="tok-comment">// writeContract — deploys campaign</span><br/>
+              <span class="tok-keyword">await</span> client.<span class="tok-fn">writeContract</span>({<br/>
+              &nbsp;&nbsp;address: CONTRACT_ADDR,<br/>
+              &nbsp;&nbsp;method:&nbsp;<span class="tok-string">"create_campaign"</span>,<br/>
+              &nbsp;&nbsp;args: [rules, budget],<br/>
+              &nbsp;&nbsp;account: sponsorWallet,<br/>
+              });
+            </div>
+          </div>
+
+          <!-- Consensus pipeline -->
+          <div class="glass-card p-6">
+            <h3 style="font-size:0.82rem;font-weight:800;color:white;margin-bottom:14px;">Consensus Pipeline</h3>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div class="step-item done"><span class="step-num">✓</span> Campaign tx submitted on-chain</div>
+              <div class="step-item done"><span class="step-num">✓</span> Rules saved to <code class="mono" style="font-size:0.7rem;">TreeMap</code></div>
+              <div class="step-item waiting" id="flow-step-3"><span class="step-num">3</span> Awaiting creator proof URL</div>
+              <div class="step-item waiting" id="flow-step-4"><span class="step-num">4</span><code class="mono" style="font-size:0.7rem;">gl.nondet.web.render()</code></div>
+              <div class="step-item waiting" id="flow-step-5"><span class="step-num">5</span><code class="mono" style="font-size:0.7rem;">strict_eq</code> consensus</div>
+              <div class="step-item waiting" id="flow-step-6"><span class="step-num">6</span> Payout released / rejected</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════ CREATOR PANEL ════════════════ -->
+    <div id="panel-creator" class="panel" style="display:none;">
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+        <!-- Form -->
+        <div class="lg:col-span-3 glass-card p-6 sm:p-8">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+            <div style="width:36px;height:36px;border-radius:10px;background:rgba(0,255,178,0.12);border:1px solid rgba(0,255,178,0.25);display:flex;align-items:center;justify-content:center;">
+              <svg width="16" height="16" fill="none" stroke="var(--mint)" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div>
+              <h2 class="text-white font-black" style="font-size:1.05rem;">Submit Proof</h2>
+              <p style="color:var(--muted);font-size:0.75rem;">Submit your content URL to trigger LLM validation</p>
+            </div>
+          </div>
+
+          <form id="creator-form" onsubmit="SDK.claimPayout(event)" novalidate>
+            <div style="margin-bottom:1.25rem;">
+              <label for="creator-campaign-id" style="display:block;font-size:0.83rem;font-weight:700;color:#c8c8e0;margin-bottom:8px;">Campaign ID</label>
+              <input id="creator-campaign-id" type="text" placeholder="e.g. campaign_0"
+                     class="mint-input mono" required
+                     oninput="App.clearError('creator-campaign-id')" />
+              <div id="err-creator-campaign-id" class="field-error">Please enter the Campaign ID provided by the sponsor.</div>
+              <p style="color:var(--muted);font-size:0.73rem;margin-top:6px;">Provided by the sponsor who created the campaign.</p>
+            </div>
+
+            <div style="margin-bottom:1.5rem;">
+              <label for="proof-url" style="display:block;font-size:0.83rem;font-weight:700;color:#c8c8e0;margin-bottom:8px;">
+                Proof URL <span style="color:var(--muted);font-weight:400;">(tweet, YouTube, blog post…)</span>
+              </label>
+              <input id="proof-url" type="url" placeholder="https://x.com/yourhandle/status/1234567890"
+                     class="mint-input" required
+                     oninput="App.clearError('proof-url')" />
+              <div id="err-proof-url" class="field-error">Please enter a valid public URL to your proof.</div>
+              <p style="color:var(--muted);font-size:0.73rem;margin-top:6px;">
+                Must be publicly accessible. Validators render this in a headless browser.
+              </p>
+            </div>
+
+            <button type="submit" id="btn-claim-payout" class="btn-mint glow-pulse" style="width:100%;"
+                    onclick="App.addRipple(event)">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+              Claim &amp; Verify Payout
+            </button>
+          </form>
+
+          <!-- Validation pipeline -->
+          <div id="validation-progress" style="display:none;margin-top:24px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <span style="font-size:0.82rem;font-weight:800;color:white;">Validation Pipeline</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div class="spinner-mint"></div>
+                <span id="progress-label" style="font-size:0.73rem;color:var(--muted);">Processing…</span>
+              </div>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="progress-track" style="margin-bottom:16px;">
+              <div class="progress-fill" id="progress-bar" style="width:0%;"></div>
+            </div>
+
+            <!-- Steps -->
+            <div style="display:flex;flex-direction:column;gap:8px;" id="vsteps-container">
+              <div class="step-item waiting" id="vstep-1"><span class="step-num">1</span> Submitting proof URL to contract…</div>
+              <div class="step-item waiting" id="vstep-2"><span class="step-num">2</span> Validators rendering <span id="progress-url" style="font-family:monospace;font-size:0.7rem;color:inherit;"></span></div>
+              <div class="step-item waiting" id="vstep-3"><span class="step-num">3</span> LLM evaluating against campaign rules…</div>
+              <div class="step-item waiting" id="vstep-4"><span class="step-num">4</span><code class="mono" style="font-size:0.7rem;">strict_eq</code> enforcing consensus…</div>
+              <div class="step-item waiting" id="vstep-5"><span class="step-num">5</span> Finalising verdict &amp; releasing payout…</div>
+            </div>
+
+            <!-- Validator nodes -->
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+              <div style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Active Validators</div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                <div class="validator-node"><div id="vn1" class="vnode-ring">V1</div><span>Validator 1</span></div>
+                <div class="validator-node"><div id="vn2" class="vnode-ring">V2</div><span>Validator 2</span></div>
+                <div class="validator-node"><div id="vn3" class="vnode-ring">V3</div><span>Validator 3</span></div>
+                <div class="validator-node"><div id="vn4" class="vnode-ring">V4</div><span>Validator 4</span></div>
+                <div class="validator-node"><div id="vn5" class="vnode-ring">V5</div><span>Validator 5</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Verdict -->
+          <div id="verdict-result" style="margin-top:20px;"></div>
+        </div>
+
+        <!-- Right side -->
+        <div class="lg:col-span-2 flex flex-col gap-5">
+          <div class="glass-card p-6">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <div style="width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 6px rgba(0,255,178,0.8);"></div>
+              <h3 style="font-size:0.82rem;font-weight:800;color:white;">GenLayerJS SDK Calls</h3>
+            </div>
+            <div class="code-block" style="margin-bottom:12px;">
+              <span class="tok-comment">// Step 1: submit proof</span><br/>
+              <span class="tok-keyword">await</span> client.<span class="tok-fn">writeContract</span>({<br/>
+              &nbsp;&nbsp;method: <span class="tok-string">"submit_proof"</span>,<br/>
+              &nbsp;&nbsp;args: [campaignId, proofUrl],<br/>
+              });
+            </div>
+            <div class="code-block">
+              <span class="tok-comment">// Step 2: trigger evaluation</span><br/>
+              <span class="tok-keyword">await</span> client.<span class="tok-fn">writeContract</span>({<br/>
+              &nbsp;&nbsp;method: <span class="tok-string">"evaluate_proof"</span>,<br/>
+              &nbsp;&nbsp;args: [campaignId],<br/>
+              });<br/><br/>
+              <span class="tok-comment">// Step 3: read verdict</span><br/>
+              <span class="tok-keyword">const</span> status = <span class="tok-keyword">await</span> client<br/>
+              &nbsp;&nbsp;.<span class="tok-fn">readContract</span>({<br/>
+              &nbsp;&nbsp;&nbsp;&nbsp;method: <span class="tok-string">"get_proof_status"</span>,<br/>
+              &nbsp;&nbsp;&nbsp;&nbsp;args: [campaignId],<br/>
+              &nbsp;&nbsp;});
+            </div>
+          </div>
+
+          <div class="glass-card p-6">
+            <h3 style="font-size:0.82rem;font-weight:800;color:white;margin-bottom:14px;">How Strict Consensus Works</h3>
+            <ol style="display:flex;flex-direction:column;gap:12px;list-style:none;">
+              <li style="display:flex;gap:10px;font-size:0.78rem;color:var(--muted-2);">
+                <span style="color:var(--mint);font-weight:800;font-family:monospace;flex-shrink:0;">01</span>
+                Each validator independently renders the proof URL in a headless browser.
+              </li>
+              <li style="display:flex;gap:10px;font-size:0.78rem;color:var(--muted-2);">
+                <span style="color:var(--mint);font-weight:800;font-family:monospace;flex-shrink:0;">02</span>
+                The HTML is passed to the LLM with the sponsor's rules.
+              </li>
+              <li style="display:flex;gap:10px;font-size:0.78rem;color:var(--muted-2);">
+                <span style="color:var(--mint);font-weight:800;font-family:monospace;flex-shrink:0;">03</span>
+                <code class="mono" style="color:inherit;">"APPROVED"</code> or <code class="mono" style="color:inherit;">"REJECTED"</code> — all must match or deviant validators are slashed.
+              </li>
+              <li style="display:flex;gap:10px;font-size:0.78rem;color:var(--muted-2);">
+                <span style="color:var(--mint);font-weight:800;font-family:monospace;flex-shrink:0;">04</span>
+                Consensus is finalised on-chain and payout released instantly.
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════ STATUS PANEL ════════════════ -->
+    <div id="panel-status" class="panel" style="display:none;">
+      <div class="glass-card p-6 sm:p-8" style="margin-bottom:20px;">
+        <h2 class="text-white font-black" style="font-size:1rem;margin-bottom:16px;">Look Up Campaign</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+          <div style="flex:1;min-width:220px;">
+            <label for="status-campaign-id" style="display:block;font-size:0.83rem;font-weight:700;color:#c8c8e0;margin-bottom:8px;">Campaign ID</label>
+            <input id="status-campaign-id" type="text" placeholder="e.g. campaign_0"
+                   class="mint-input mono"
+                   onkeydown="if(event.key==='Enter')SDK.lookupCampaign()" />
+          </div>
+          <button id="btn-lookup" class="btn-mint" style="white-space:nowrap;padding:0.85rem 1.8rem;"
+                  onclick="SDK.lookupCampaign();App.addRipple(event)">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Look Up
+          </button>
+        </div>
+
+        <div class="code-block" style="margin-top:16px;">
+          <span class="tok-comment">// readContract — no gas cost, instant</span><br/>
+          <span class="tok-keyword">const</span> [campaign, proof] = <span class="tok-keyword">await</span> Promise.<span class="tok-fn">all</span>([<br/>
+          &nbsp;&nbsp;client.<span class="tok-fn">readContract</span>({ method: <span class="tok-string">"get_campaign"</span>,&nbsp;&nbsp;&nbsp;&nbsp;args: [id] }),<br/>
+          &nbsp;&nbsp;client.<span class="tok-fn">readContract</span>({ method: <span class="tok-string">"get_proof_status"</span>, args: [id] }),<br/>
+          ]);
+        </div>
+      </div>
+
+      <!-- Skeleton loader -->
+      <div id="status-skeleton" style="display:none;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:16px;">
+          <div class="glass-card p-6"><div class="shimmer" style="height:120px;"></div></div>
+          <div class="glass-card p-6"><div class="shimmer" style="height:120px;"></div></div>
+        </div>
+        <div class="glass-card p-6"><div class="shimmer" style="height:60px;"></div></div>
+      </div>
+
+      <!-- Status data -->
+      <div id="status-display" style="display:none;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:16px;">
+          <div class="glass-card p-6">
+            <div style="font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--muted);margin-bottom:16px;">Campaign Details</div>
+            <dl style="display:flex;flex-direction:column;gap:12px;">
+              <div><dt style="font-size:0.72rem;color:var(--muted);margin-bottom:3px;">Campaign ID</dt><dd id="sd-id" class="mono" style="color:white;font-size:0.85rem;font-weight:600;">—</dd></div>
+              <div><dt style="font-size:0.72rem;color:var(--muted);margin-bottom:3px;">Sponsor</dt><dd id="sd-sponsor" class="mono" style="color:white;font-size:0.72rem;word-break:break-all;">—</dd></div>
+              <div><dt style="font-size:0.72rem;color:var(--muted);margin-bottom:3px;">Budget</dt><dd id="sd-budget" style="color:var(--mint);font-weight:800;font-size:1rem;">—</dd></div>
+              <div><dt style="font-size:0.72rem;color:var(--muted);margin-bottom:3px;">Status</dt><dd id="sd-active">—</dd></div>
+            </dl>
+          </div>
+          <div class="glass-card p-6">
+            <div style="font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--muted);margin-bottom:16px;">Proof &amp; Verdict</div>
+            <dl style="display:flex;flex-direction:column;gap:12px;">
+              <div><dt style="font-size:0.72rem;color:var(--muted);margin-bottom:3px;">Creator</dt><dd id="sd-creator" class="mono" style="color:white;font-size:0.72rem;word-break:break-all;">—</dd></div>
+              <div><dt style="font-size:0.72rem;color:var(--muted);margin-bottom:3px;">Proof URL</dt><dd id="sd-proof-url" style="color:white;font-size:0.72rem;word-break:break-all;">—</dd></div>
+              <div><dt style="font-size:0.72rem;color:var(--muted);margin-bottom:3px;">LLM Verdict</dt><dd id="sd-verdict">—</dd></div>
+            </dl>
+          </div>
+        </div>
+        <div class="glass-card p-6">
+          <div style="font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--muted);margin-bottom:12px;">Validation Rules</div>
+          <p id="sd-rules" style="color:var(--txt);font-size:0.85rem;line-height:1.75;">—</p>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="status-empty" style="text-align:center;padding:60px 20px;color:var(--muted);">
+        <div style="width:60px;height:60px;border-radius:16px;border:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="opacity:0.4;"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 0 2-2h2a2 2 0 0 0 2 2"/></svg>
+        </div>
+        <p style="font-size:0.88rem;">Enter a Campaign ID above to load its on-chain state.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="relative z-10 mt-16" style="border-top:1px solid var(--border);">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-5" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;font-size:0.75rem;color:var(--muted);">
+      <span>© 2026 <strong style="color:white;">SponsorShield</strong> — Built on <span style="color:var(--mint);">GenLayer</span></span>
+      <span class="mono">Contract: <span id="footer-contract-addr" style="color:var(--mint);">0x0000…0000</span></span>
+    </div>
+  </footer>
+
+  <!-- ════════════════════════════════════════════
+       JAVASCRIPT
+  ════════════════════════════════════════════ -->
+  <script>
+  "use strict";
+
+  /* ── Config ── */
+  const CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000";
+  const RPC_URL          = "http://127.0.0.1:4000/api";
+
+  /* ══════════════════════════════════════════
+     PARTICLE CANVAS ENGINE
+  ════════════════════════════════════════== */
+  (function initParticles() {
+    const canvas  = document.getElementById('particle-canvas');
+    const ctx     = canvas.getContext('2d');
+    let W, H, particles = [], raf;
+    const MINT = [0, 255, 178];
+    const BLUE = [0, 200, 255];
+
+    function resize() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+
+    function mkParticle() {
+      const col = Math.random() > 0.5 ? MINT : BLUE;
+      return {
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: Math.random() * 1.5 + 0.3,
+        vx: (Math.random() - 0.5) * 0.22,
+        vy: (Math.random() - 0.5) * 0.22,
+        alpha: Math.random() * 0.5 + 0.1,
+        col,
+      };
+    }
+
+    function init() {
+      resize();
+      particles = Array.from({ length: 90 }, mkParticle);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      particles.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${p.col.join(',')},${p.alpha})`;
+        ctx.fill();
+
+        // faint line to nearby particles
+        particles.forEach(q => {
+          const dx = p.x - q.x, dy = p.y - q.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 120 && dist > 0) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
+            ctx.strokeStyle = `rgba(${p.col.join(',')},${0.06 * (1 - dist / 120)})`;
+            ctx.lineWidth = 0.6;
+            ctx.stroke();
+          }
+        });
+
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > W) p.vx *= -1;
+        if (p.y < 0 || p.y > H) p.vy *= -1;
+      });
+      raf = requestAnimationFrame(draw);
+    }
+
+    init(); draw();
+    window.addEventListener('resize', () => { resize(); });
+  })();
+
+  /* ══════════════════════════════════════════
+     TYPEWRITER HERO
+  ════════════════════════════════════════== */
+  (function initTypewriter() {
+    const phrases = [
+      'Payouts with AI Consensus',
+      'Validation Without Middlemen',
+      'Trust Enforced On-Chain',
+      'Compliance via LLM Consensus',
+    ];
+    const el  = document.getElementById('tw-text');
+    const cur = document.getElementById('tw-cursor');
+    let pi = 0, ci = 0, deleting = false;
+    const SPEED_TYPE = 55, SPEED_DEL = 28, PAUSE = 2200;
+
+    function tick() {
+      const phrase = phrases[pi];
+      if (!deleting) {
+        ci++;
+        el.textContent = phrase.slice(0, ci);
+        if (ci === phrase.length) { deleting = true; setTimeout(tick, PAUSE); return; }
+      } else {
+        ci--;
+        el.textContent = phrase.slice(0, ci);
+        if (ci === 0) { deleting = false; pi = (pi + 1) % phrases.length; }
+      }
+      setTimeout(tick, deleting ? SPEED_DEL : SPEED_TYPE);
+    }
+    setTimeout(tick, 600);
+  })();
+
+  /* ══════════════════════════════════════════
+     COUNTER ANIMATION (hero stats)
+  ════════════════════════════════════════== */
+  function animateCounter(id, target, duration = 1200) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const start = performance.now();
+    function step(now) {
+      const pct = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - pct, 3);
+      el.textContent = Math.floor(ease * target);
+      if (pct < 1) requestAnimationFrame(step);
+      else el.textContent = target;
+    }
+    requestAnimationFrame(step);
+  }
+  setTimeout(() => animateCounter('stat-campaigns', 47), 1000);
+
+  /* ══════════════════════════════════════════
+     TOAST SYSTEM
+  ════════════════════════════════════════== */
+  const Toast = {
+    icons: { success: '✅', error: '❌', info: '⬡' },
+    colors: { success: '#00FFB2', error: '#ff6b7a', info: '#60a5fa' },
+
+    show(type, title, msg, ms = 4500) {
+      const c  = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      el.className = `toast toast-${type}`;
+      el.innerHTML = `
+        <span class="toast-icon">${this.icons[type]}</span>
+        <div>
+          <div class="toast-title" style="color:${this.colors[type]}">${title}</div>
+          ${msg ? `<div class="toast-msg">${msg}</div>` : ''}
+        </div>`;
+      c.appendChild(el);
+      setTimeout(() => { el.classList.add('leaving'); setTimeout(() => el.remove(), 300); }, ms);
+    },
+    success: (t, m, d) => Toast.show('success', t, m, d),
+    error:   (t, m, d) => Toast.show('error',   t, m, d),
+    info:    (t, m, d) => Toast.show('info',     t, m, d),
+  };
+
+  /* ══════════════════════════════════════════
+     APP  — UI utilities
+  ════════════════════════════════════════== */
+  const App = {
+    currentTab: 'sponsor',
+
+    switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => {
+        p.style.display = 'none';
+        p.classList.remove('panel-enter');
+      });
+      const btn = document.getElementById(`tab-${tab}`);
+      const panel = document.getElementById(`panel-${tab}`);
+      if (btn)   btn.classList.add('active');
+      if (panel) {
+        panel.style.display = 'block';
+        void panel.offsetWidth;
+        panel.classList.add('panel-enter');
+      }
+      this.currentTab = tab;
+    },
+
+    addRipple(e) {
+      const btn  = e.currentTarget;
+      const rect = btn.getBoundingClientRect();
+      const r    = document.createElement('span');
+      const size = Math.max(rect.width, rect.height);
+      r.className = 'ripple';
+      r.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - rect.left - size/2}px;top:${e.clientY - rect.top - size/2}px;`;
+      btn.appendChild(r);
+      setTimeout(() => r.remove(), 600);
+    },
+
+    setLoading(id, on, label = '') {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = on;
+      if (on) {
+        btn._html = btn.innerHTML;
+        btn.innerHTML = `<div class="spinner"></div>${label || 'Processing…'}`;
+      } else {
+        if (btn._html) btn.innerHTML = btn._html;
+      }
+    },
+
+    setStep(id, state) {
+      const el = document.getElementById(id);
+      if (el) el.className = `step-item ${state}`;
+    },
+
+    setValidatorNode(id, state) {
+      const el = document.getElementById(id);
+      if (el) el.className = `vnode-ring ${state}`;
+    },
+
+    showFieldError(fieldId, errId) {
+      const input = document.getElementById(fieldId);
+      const err   = document.getElementById(`err-${errId || fieldId}`);
+      if (input) input.classList.add('error');
+      if (err)   err.classList.add('show');
+    },
+
+    clearError(fieldId) {
+      const input = document.getElementById(fieldId);
+      const err   = document.getElementById(`err-${fieldId}`);
+      if (input) input.classList.remove('error');
+      if (err)   err.classList.remove('show');
+    },
+
+    resetSponsorForm() {
+      document.getElementById('sponsor-form').reset();
+      document.getElementById('campaign-id-result').style.display = 'none';
+      ['reward-amount','campaign-rules'].forEach(f => this.clearError(f));
+      ['flow-step-3','flow-step-4','flow-step-5','flow-step-6'].forEach(id => this.setStep(id, 'waiting'));
+      Toast.info('Form Reset', 'Campaign form cleared.');
+    },
+
+    copyToClipboard(elId, btnId) {
+      const val = document.getElementById(elId)?.textContent?.trim();
+      if (!val) return;
+      navigator.clipboard.writeText(val).then(() => {
+        Toast.success('Copied!', 'Campaign ID copied to clipboard.');
+        const btn = document.getElementById(btnId);
+        if (btn) { const orig = btn.innerHTML; btn.innerHTML = '✓ Copied'; setTimeout(() => btn.innerHTML = orig, 1800); }
+      }).catch(() => Toast.error('Copy Failed', 'Could not access clipboard.'));
+    },
+  };
+
+  /* Shared utility */
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  /* ══════════════════════════════════════════
+     WALLET UI CONTROLLER
+  ════════════════════════════════════════== */
+  const WalletUI = {
+    _open: false,
+
+    toggle(e) {
+      if (e) e.stopPropagation();
+      this._open ? this.close() : this.open();
+    },
+    open() {
+      document.getElementById('wallet-dropdown').classList.add('open');
+      document.getElementById('wallet-overlay').classList.add('open');
+      document.getElementById('wallet-btn-chevron').style.transform = 'rotate(180deg)';
+      this._open = true;
+    },
+    close() {
+      document.getElementById('wallet-dropdown').classList.remove('open');
+      document.getElementById('wallet-overlay').classList.remove('open');
+      document.getElementById('wallet-btn-chevron').style.transform = 'rotate(0deg)';
+      this._open = false;
+    },
+    async connect() {
+      const btn   = document.getElementById('btn-do-connect');
+      const wbtn  = document.getElementById('wallet-btn');
+      const dot   = document.getElementById('wallet-btn-dot');
+      const label = document.getElementById('wallet-btn-label');
+
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> Connecting…';
+      dot.className = 'pulse';
+      label.textContent = 'Connecting…';
+      wbtn.classList.add('loading');
+
+      /*
+       * ┌─── GENLAYERJS SDK INTEGRATION POINT ──────────────────────┐
+       * │ const client = createClient({ rpcUrl: RPC_URL });          │
+       * │ const [account] = await client.requestAccounts();          │
+       * └───────────────────────────────────────────────────────────┘
+       */
+      await sleep(1200);
+      SDK._account   = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+      SDK._connected = true;
+
+      // Update button
+      dot.className = 'connected';
+      wbtn.classList.remove('loading');
+      wbtn.classList.add('connected');
+      label.textContent = SDK._account.slice(0,6) + '…' + SDK._account.slice(-4);
+
+      // Show connected panel
+      document.getElementById('wdrop-disconnected').style.display = 'none';
+      document.getElementById('wdrop-connected').style.display    = 'block';
+      document.getElementById('wdrop-address').textContent =
+        SDK._account.slice(0,8) + '…' + SDK._account.slice(-6);
+      const shortContract = CONTRACT_ADDRESS !== '0x' + '0'.repeat(40)
+        ? CONTRACT_ADDRESS.slice(0,6) + '…' + CONTRACT_ADDRESS.slice(-4)
+        : '0x0000…0000';
+      document.getElementById('wdrop-contract').textContent = shortContract;
+      document.getElementById('footer-contract-addr').textContent = shortContract;
+
+      // Restore button state
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Connect to GenLayer`;
+
+      Toast.success('Wallet Connected 🔐', `Account ${label.textContent} on GenLayer localnet.`);
+      this.close();
+    },
+    disconnect() {
+      SDK._account   = null;
+      SDK._connected = false;
+
+      const dot   = document.getElementById('wallet-btn-dot');
+      const label = document.getElementById('wallet-btn-label');
+      const wbtn  = document.getElementById('wallet-btn');
+      dot.className = '';
+      wbtn.classList.remove('connected');
+      label.textContent = 'Connect Wallet';
+
+      document.getElementById('wdrop-disconnected').style.display = 'block';
+      document.getElementById('wdrop-connected').style.display    = 'none';
+      document.getElementById('footer-contract-addr').textContent = '0x0000…0000';
+
+      Toast.info('Wallet Disconnected', 'You have been disconnected from GenLayer.');
+      this.close();
+    },
+  };
+
+  /* ══════════════════════════════════════════
+     SDK FACADE
+     ─────────────────────────────────────────
+     Integration points clearly marked below.
+     Replace simulation code with real
+     GenLayerJS SDK calls after:
+       npm install @genlayer/sdk
+       const { createClient } = await import("@genlayer/sdk");
+       const client = createClient({ rpcUrl: RPC_URL });
+  ════════════════════════════════════════== */
+
+  const SDK = {
+    _account: null,
+    _connected: false,
+
+    /* ── Connect Wallet (legacy alias for compatibility) ── */
+    async connectWallet() {
+      if (this._connected) {
+        Toast.info('Already Connected', `Wallet: ${this._account}`);
+        return;
+      }
+      WalletUI.open();
+    },
+
+    /* ── Create Campaign ── */
+    async createCampaign(event) {
+      event.preventDefault();
+      const rules  = document.getElementById('campaign-rules').value.trim();
+      const budget = parseInt(document.getElementById('reward-amount').value, 10);
+      let valid = true;
+
+      if (!budget || budget < 1) { App.showFieldError('reward-amount'); valid = false; }
+      if (!rules)                 { App.showFieldError('campaign-rules'); valid = false; }
+      if (!valid) return;
+
+      document.getElementById('campaign-id-result').style.display = 'none';
+      App.setLoading('btn-create-campaign', true, 'Deploying…');
+
+      try {
+        /*
+         * ┌─── GENLAYERJS SDK INTEGRATION POINT ──────────────────────┐
+         * │ const txHash = await client.writeContract({                │
+         * │   address: CONTRACT_ADDRESS,                               │
+         * │   method:  "create_campaign",                              │
+         * │   args:    [rules, budget],                                │
+         * │   account: this._account,                                  │
+         * │ });                                                         │
+         * │ const receipt  = await client.waitForTransaction(txHash);  │
+         * │ const campaignId = receipt.returnValue;                    │
+         * └───────────────────────────────────────────────────────────┘
+         */
+        Toast.info('Transaction Submitted', 'Waiting for validator confirmation…', 2500);
+        await sleep(400);
+        App.setStep('flow-step-3', 'active');
+        await sleep(1800);
+
+        const campaignId = `campaign_${Math.floor(Math.random() * 9000) + 100}`;
+        App.setStep('flow-step-3', 'done');
+
+        document.getElementById('campaign-id-value').textContent = campaignId;
+        document.getElementById('campaign-id-result').style.display = 'block';
+
+        animateCounter('stat-campaigns', 48);
+
+        Toast.success('Campaign Deployed 🚀', `<strong>${campaignId}</strong> is live on GenLayer.`, 6000);
+        console.log('[SponsorShield] create_campaign →', { rules, budget, campaignId });
+
+      } catch (err) {
+        Toast.error('Deploy Failed', err.message);
+        console.error('[SponsorShield] create_campaign error:', err);
+      } finally {
+        App.setLoading('btn-create-campaign', false);
+      }
+    },
+
+    /* ── Claim Payout ── */
+    async claimPayout(event) {
+      event.preventDefault();
+      const campaignId = document.getElementById('creator-campaign-id').value.trim();
+      const proofUrl   = document.getElementById('proof-url').value.trim();
+      let valid = true;
+
+      if (!campaignId) { App.showFieldError('creator-campaign-id'); valid = false; }
+      if (!proofUrl)   { App.showFieldError('proof-url'); valid = false; }
+      if (!valid) return;
+
+      // Reset UI
+      document.getElementById('verdict-result').innerHTML = '';
+      document.getElementById('validation-progress').style.display = 'block';
+      for (let i = 1; i <= 5; i++) App.setStep(`vstep-${i}`, 'waiting');
+      ['vn1','vn2','vn3','vn4','vn5'].forEach(id => App.setValidatorNode(id, ''));
+      document.getElementById('progress-bar').style.width = '0%';
+      document.getElementById('progress-url').textContent = proofUrl.length > 30 ? proofUrl.slice(0,28) + '…' : proofUrl;
+      App.setLoading('btn-claim-payout', true, 'Submitting…');
+
+      try {
+        /*
+         * ┌─── GENLAYERJS SDK INTEGRATION POINT — Step 1 ─────────────┐
+         * │ await client.writeContract({                                │
+         * │   address: CONTRACT_ADDRESS,                               │
+         * │   method:  "submit_proof",                                  │
+         * │   args:    [campaignId, proofUrl],                          │
+         * │   account: this._account,                                  │
+         * │ });                                                         │
+         * └───────────────────────────────────────────────────────────┘
+         */
+        App.setStep('vstep-1', 'active');
+        document.getElementById('progress-label').textContent = 'Submitting proof to contract…';
+        await sleep(1100);
+        App.setStep('vstep-1', 'done');
+        document.getElementById('progress-bar').style.width = '20%';
+
+        /*
+         * ┌─── GENLAYERJS SDK INTEGRATION POINT — Step 2 ─────────────┐
+         * │ await client.writeContract({                                │
+         * │   address: CONTRACT_ADDRESS, method: "evaluate_proof",     │
+         * │   args: [campaignId],                                      │
+         * │ });                                                         │
+         * └───────────────────────────────────────────────────────────┘
+         */
+        App.setStep('vstep-2', 'active');
+        document.getElementById('progress-label').textContent = 'Validators rendering proof URL…';
+        Toast.info('Validators Active', 'N validators scraping your URL now.', 2500);
+        // Animate validators lighting up
+        for (const id of ['vn1','vn2','vn3','vn4','vn5']) {
+          App.setValidatorNode(id, 'active'); await sleep(340);
+        }
+        await sleep(600);
+        App.setStep('vstep-2', 'done');
+        document.getElementById('progress-bar').style.width = '40%';
+
+        App.setStep('vstep-3', 'active');
+        document.getElementById('progress-label').textContent = 'LLM evaluating compliance…';
+        await sleep(1800);
+        App.setStep('vstep-3', 'done');
+        document.getElementById('progress-bar').style.width = '65%';
+
+        App.setStep('vstep-4', 'active');
+        document.getElementById('progress-label').textContent = 'strict_eq enforcing consensus…';
+        await sleep(1400);
+        App.setStep('vstep-4', 'done');
+        document.getElementById('progress-bar').style.width = '85%';
+
+        App.setStep('vstep-5', 'active');
+        document.getElementById('progress-label').textContent = 'Finalising verdict on-chain…';
+        await sleep(900);
+        App.setStep('vstep-5', 'done');
+        document.getElementById('progress-bar').style.width = '100%';
+
+        /*
+         * ┌─── GENLAYERJS SDK INTEGRATION POINT — Read verdict ───────┐
+         * │ const status = await client.readContract({                 │
+         * │   address: CONTRACT_ADDRESS,                               │
+         * │   method:  "get_proof_status",                              │
+         * │   args:    [campaignId],                                   │
+         * │ });                                                         │
+         * │ const verdict = status.verdict; // "APPROVED" | "REJECTED" │
+         * └───────────────────────────────────────────────────────────┘
+         */
+        const isApproved = Math.random() > 0.35;
+        const verdict    = isApproved ? 'APPROVED' : 'REJECTED';
+
+        // Mark validators done / x
+        ['vn1','vn2','vn3','vn4','vn5'].forEach(id => App.setValidatorNode(id, isApproved ? 'done' : ''));
+
+        document.getElementById('progress-label').textContent = 'Complete.';
+        this._renderVerdict(verdict, campaignId);
+
+        if (isApproved) {
+          Toast.success('Payout Released 💰', `<strong>${campaignId}</strong> — consensus APPROVED.`, 7000);
+        } else {
+          Toast.error('Proof Rejected', `<strong>${campaignId}</strong> — rules not satisfied.`, 7000);
+        }
+
+        console.log('[SponsorShield] evaluate_proof verdict:', { campaignId, proofUrl, verdict });
+
+      } catch (err) {
+        Toast.error('Evaluation Failed', err.message);
+        console.error('[SponsorShield] evaluate_proof error:', err);
+      } finally {
+        App.setLoading('btn-claim-payout', false);
+      }
+    },
+
+    _renderVerdict(verdict, campaignId) {
+      const ok  = verdict === 'APPROVED';
+      const box = document.getElementById('verdict-result');
+      box.innerHTML = `
+        <div class="${ok ? 'verdict-approved' : 'verdict-rejected'}">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+            <div style="font-size:1.6rem;">${ok ? '✅' : '❌'}</div>
+            <div style="flex:1;">
+              <div style="color:white;font-weight:900;font-size:0.95rem;">${ok ? 'Payout Released' : 'Proof Rejected'}</div>
+              <div class="mono" style="color:var(--muted);font-size:0.72rem;">${campaignId}</div>
+            </div>
+            <span class="badge badge-${ok ? 'approved' : 'rejected'}">${verdict}</span>
+          </div>
+          <p style="font-size:0.82rem;color:var(--muted-2);line-height:1.65;">
+            ${ok
+              ? 'All 5 validators reached <strong style="color:var(--mint)">APPROVED</strong> consensus via <code style="font-family:monospace">strict_eq</code>. The campaign payout has been released to your wallet.'
+              : 'Validators determined your proof does not satisfy all campaign rules. Review the requirements and submit a qualifying proof through a new campaign.'}
+          </p>
+        </div>`;
+    },
+
+    /* ── Lookup Campaign ── */
+    async lookupCampaign() {
+      const campaignId = document.getElementById('status-campaign-id').value.trim();
+      if (!campaignId) {
+        Toast.error('Input Required', 'Please enter a Campaign ID.');
+        document.getElementById('status-campaign-id').classList.add('error');
+        setTimeout(() => document.getElementById('status-campaign-id').classList.remove('error'), 2000);
+        return;
+      }
+
+      document.getElementById('status-display').style.display = 'none';
+      document.getElementById('status-empty').style.display   = 'none';
+      document.getElementById('status-skeleton').style.display = 'block';
+      App.setLoading('btn-lookup', true, 'Fetching…');
+
+      try {
+        /*
+         * ┌─── GENLAYERJS SDK INTEGRATION POINT ──────────────────────┐
+         * │ const [campaign, proof] = await Promise.all([              │
+         * │   client.readContract({ address:CONTRACT_ADDRESS,          │
+         * │     method:"get_campaign",    args:[campaignId] }),        │
+         * │   client.readContract({ address:CONTRACT_ADDRESS,          │
+         * │     method:"get_proof_status",args:[campaignId] }),        │
+         * │ ]);                                                         │
+         * └───────────────────────────────────────────────────────────┘
+         */
+        await sleep(950);
+
+        const verdicts = ['PENDING','APPROVED','REJECTED'];
+        const v = verdicts[Math.floor(Math.random() * verdicts.length)];
+        const hasProof = v !== 'PENDING';
+        const campaign = {
+          campaign_id: campaignId,
+          sponsor:     '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+          rules:       'Post a tweet mentioning @SponsorShield with #Web3Sponsor. Must be publicly visible with ≥50 likes.',
+          budget:      500,
+          active:      v === 'PENDING',
+        };
+        const proof = {
+          creator:   hasProof ? '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' : '',
+          proof_url: hasProof ? 'https://x.com/creator123/status/1234567890' : '',
+          verdict:   v,
+        };
+
+        const $ = id => document.getElementById(id);
+        $('sd-id').textContent      = campaign.campaign_id;
+        $('sd-sponsor').textContent = campaign.sponsor || '—';
+        $('sd-budget').textContent  = campaign.budget ? `${campaign.budget} GL` : '—';
+        $('sd-rules').textContent   = campaign.rules || '—';
+        $('sd-creator').textContent  = proof.creator || '—';
+        $('sd-proof-url').innerHTML  = proof.proof_url
+          ? `<a href="${proof.proof_url}" target="_blank" rel="noopener" style="color:var(--mint);text-decoration:underline;">${proof.proof_url}</a>`
+          : '—';
+
+        $('sd-active').innerHTML  = `<span class="badge badge-${campaign.active ? 'active' : 'closed'}">${campaign.active ? 'Active' : 'Closed'}</span>`;
+        $('sd-verdict').innerHTML = `<span class="badge badge-${v.toLowerCase()}">${v}</span>`;
+
+        document.getElementById('status-skeleton').style.display = 'none';
+        document.getElementById('status-display').style.display  = 'block';
+        document.getElementById('status-display').classList.add('panel-enter');
+
+        Toast.success('Campaign Loaded', `On-chain state for <strong>${campaignId}</strong>.`);
+        console.log('[SponsorShield] readContract →', { campaign, proof });
+
+      } catch (err) {
+        document.getElementById('status-skeleton').style.display = 'none';
+        document.getElementById('status-empty').style.display    = 'block';
+        Toast.error('Lookup Failed', err.message || 'Campaign not found.');
+        console.error('[SponsorShield] readContract error:', err);
+      } finally {
+        App.setLoading('btn-lookup', false);
+      }
+    },
+  };
+
+  /* ══════════════════════════════════════════
+     INIT
+  ════════════════════════════════════════== */
+  document.addEventListener('DOMContentLoaded', () => {
+    // Ensure sponsor panel visible
+    App.switchTab('sponsor');
+
+    // Welcome toast
+    setTimeout(() => Toast.info(
+      '⬡ SponsorShield Ready',
+      'Click "Connect Wallet" in the nav to get started.',
+      5500
+    ), 900);
+
+    // Close dropdown on Escape key
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') WalletUI.close();
+    });
+  });
+  </script>
+</body>
+</html>
