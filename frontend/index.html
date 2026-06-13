@@ -1137,13 +1137,46 @@
   </footer>
 
   <!-- ════════════════════════════════════════════
+       GENLAYER SDK — ES Module bridge
+       Loads genlayerclient.js as an ES module and
+       exposes all helpers as window.GL so the
+       classic inline script below can access them.
+  ════════════════════════════════════════════ -->
+  <script type="module">
+    import {
+      CONTRACT_ADDRESS,
+      getReadClient,
+      getWriteClient,
+      connectMetaMask,
+      getMetaMaskAccount,
+      getCampaign,
+      getProofStatus,
+      createCampaign,
+      verifyAndPay,
+    } from "./genlayerclient.js";
+
+    // Expose everything on window.GL for access by the classic <script> below
+    window.GL = {
+      CONTRACT_ADDRESS,
+      getReadClient,
+      getWriteClient,
+      connectMetaMask,
+      getMetaMaskAccount,
+      getCampaign,
+      getProofStatus,
+      createCampaign,
+      verifyAndPay,
+    };
+  </script>
+
+  <!-- ════════════════════════════════════════════
        JAVASCRIPT
   ════════════════════════════════════════════ -->
   <script>
   "use strict";
 
   /* ── Config ── */
-  const CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000";
+  const CONTRACT_ADDRESS = "0xE91b2670D14d047B24D198944FfcF72DC061C043";
   const RPC_URL          = "http://127.0.0.1:4000/api";
 
   /* ══════════════════════════════════════════
@@ -1405,45 +1438,64 @@
       const dot   = document.getElementById('wallet-btn-dot');
       const label = document.getElementById('wallet-btn-label');
 
-      btn.disabled = true;
+      btn.disabled  = true;
       btn.innerHTML = '<div class="spinner"></div> Connecting…';
       dot.className = 'pulse';
       label.textContent = 'Connecting…';
       wbtn.classList.add('loading');
 
-      /*
-       * ┌─── GENLAYERJS SDK INTEGRATION POINT ──────────────────────┐
-       * │ const client = createClient({ rpcUrl: RPC_URL });          │
-       * │ const [account] = await client.requestAccounts();          │
-       * └───────────────────────────────────────────────────────────┘
-       */
-      await sleep(1200);
-      SDK._account   = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      SDK._connected = true;
+      try {
+        // ── Real MetaMask / EIP-1193 wallet connection ────────────────
+        const account = await window.GL.connectMetaMask();
+        SDK._account   = account;
+        SDK._connected = true;
 
-      // Update button
-      dot.className = 'connected';
-      wbtn.classList.remove('loading');
-      wbtn.classList.add('connected');
-      label.textContent = SDK._account.slice(0,6) + '…' + SDK._account.slice(-4);
+        // Listen for account / chain changes
+        window.ethereum.on('accountsChanged', (accounts) => {
+          if (accounts.length === 0) WalletUI.disconnect();
+          else { SDK._account = accounts[0]; WalletUI._syncConnectedUI(accounts[0]); }
+        });
+        window.ethereum.on('chainChanged', () => window.location.reload());
 
-      // Show connected panel
+        // Update button & dropdown
+        dot.className = 'connected';
+        wbtn.classList.remove('loading');
+        wbtn.classList.add('connected');
+        label.textContent = account.slice(0,6) + '…' + account.slice(-4);
+
+        WalletUI._syncConnectedUI(account);
+        Toast.success('Wallet Connected 🔐', `Account ${label.textContent} linked to GenLayer Studionet.`);
+      } catch (err) {
+        dot.className = '';
+        wbtn.classList.remove('loading');
+        label.textContent = 'Connect Wallet';
+        Toast.error('Connection Failed', err.message || 'MetaMask request was rejected.');
+        console.error('[SponsorShield] MetaMask connect error:', err);
+      } finally {
+        btn.disabled  = false;
+        btn.innerHTML = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Connect to GenLayer`;
+      }
+      this.close();
+    },
+
+    /** Sync the connected-state UI elements for a given account address. */
+    _syncConnectedUI(account) {
       document.getElementById('wdrop-disconnected').style.display = 'none';
       document.getElementById('wdrop-connected').style.display    = 'block';
       document.getElementById('wdrop-address').textContent =
-        SDK._account.slice(0,8) + '…' + SDK._account.slice(-6);
-      const shortContract = CONTRACT_ADDRESS !== '0x' + '0'.repeat(40)
-        ? CONTRACT_ADDRESS.slice(0,6) + '…' + CONTRACT_ADDRESS.slice(-4)
-        : '0x0000…0000';
+        account.slice(0,8) + '…' + account.slice(-6);
+
+      const shortContract = CONTRACT_ADDRESS.slice(0,6) + '…' + CONTRACT_ADDRESS.slice(-4);
       document.getElementById('wdrop-contract').textContent = shortContract;
       document.getElementById('footer-contract-addr').textContent = shortContract;
 
-      // Restore button state
-      btn.disabled = false;
-      btn.innerHTML = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Connect to GenLayer`;
-
-      Toast.success('Wallet Connected 🔐', `Account ${label.textContent} on GenLayer localnet.`);
-      this.close();
+      const wbtn  = document.getElementById('wallet-btn');
+      const dot   = document.getElementById('wallet-btn-dot');
+      const label = document.getElementById('wallet-btn-label');
+      dot.className = 'connected';
+      wbtn.classList.remove('loading');
+      wbtn.classList.add('connected');
+      label.textContent = account.slice(0,6) + '…' + account.slice(-4);
     },
     disconnect() {
       SDK._account   = null;
@@ -1500,40 +1552,51 @@
       if (!rules)                 { App.showFieldError('campaign-rules'); valid = false; }
       if (!valid) return;
 
+      if (!this._connected) {
+        Toast.error('Wallet Required', 'Please connect your MetaMask wallet first.');
+        WalletUI.open();
+        return;
+      }
+
       document.getElementById('campaign-id-result').style.display = 'none';
       App.setLoading('btn-create-campaign', true, 'Deploying…');
 
       try {
-        /*
-         * ┌─── GENLAYERJS SDK INTEGRATION POINT ──────────────────────┐
-         * │ const txHash = await client.writeContract({                │
-         * │   address: CONTRACT_ADDRESS,                               │
-         * │   method:  "create_campaign",                              │
-         * │   args:    [rules, budget],                                │
-         * │   account: this._account,                                  │
-         * │ });                                                         │
-         * │ const receipt  = await client.waitForTransaction(txHash);  │
-         * │ const campaignId = receipt.returnValue;                    │
-         * └───────────────────────────────────────────────────────────┘
-         */
-        Toast.info('Transaction Submitted', 'Waiting for validator confirmation…', 2500);
-        await sleep(400);
+        Toast.info('Transaction Submitted', 'Waiting for GenLayer validator confirmation…', 3000);
         App.setStep('flow-step-3', 'active');
-        await sleep(1800);
 
-        const campaignId = `campaign_${Math.floor(Math.random() * 9000) + 100}`;
+        // ── Real GenLayer writeContract call ─────────────────────────
+        const txHash = await window.GL.createCampaign(this._account, rules, budget);
+        console.log('[SponsorShield] create_campaign txHash:', txHash);
+
+        Toast.info('Tx Broadcast', `Hash: ${txHash.slice(0,10)}… — Awaiting finalization.`, 4000);
         App.setStep('flow-step-3', 'done');
+        App.setStep('flow-step-4', 'active');
 
-        document.getElementById('campaign-id-value').textContent = campaignId;
+        // Wait for the transaction to be finalized using GenLayer receipt polling
+        const { TransactionStatus } = await import("https://esm.sh/genlayer-js@latest/types");
+        const client = window.GL.getReadClient();
+        const receipt = await client.waitForTransactionReceipt({
+          hash:   txHash,
+          status: TransactionStatus.FINALIZED,
+        });
+
+        App.setStep('flow-step-4', 'done');
+
+        // The campaign ID is derived from the return value or tx hash
+        const campaignId = receipt?.returnValue ?? txHash.slice(0, 18);
+        App.setStep('flow-step-5', 'done');
+
+        document.getElementById('campaign-id-value').textContent = String(campaignId);
         document.getElementById('campaign-id-result').style.display = 'block';
 
-        animateCounter('stat-campaigns', 48);
-
-        Toast.success('Campaign Deployed 🚀', `<strong>${campaignId}</strong> is live on GenLayer.`, 6000);
-        console.log('[SponsorShield] create_campaign →', { rules, budget, campaignId });
+        Toast.success('Campaign Deployed 🚀', `<strong>${campaignId}</strong> is live on GenLayer Studionet.`, 7000);
+        console.log('[SponsorShield] create_campaign →', { rules, budget, campaignId, receipt });
 
       } catch (err) {
-        Toast.error('Deploy Failed', err.message);
+        App.setStep('flow-step-3', 'waiting');
+        App.setStep('flow-step-4', 'waiting');
+        Toast.error('Deploy Failed', err.message || 'Transaction reverted or timed out.');
         console.error('[SponsorShield] create_campaign error:', err);
       } finally {
         App.setLoading('btn-create-campaign', false);
@@ -1551,6 +1614,12 @@
       if (!proofUrl)   { App.showFieldError('proof-url'); valid = false; }
       if (!valid) return;
 
+      if (!this._connected) {
+        Toast.error('Wallet Required', 'Please connect your MetaMask wallet first.');
+        WalletUI.open();
+        return;
+      }
+
       // Reset UI
       document.getElementById('verdict-result').innerHTML = '';
       document.getElementById('validation-progress').style.display = 'block';
@@ -1561,75 +1630,57 @@
       App.setLoading('btn-claim-payout', true, 'Submitting…');
 
       try {
-        /*
-         * ┌─── GENLAYERJS SDK INTEGRATION POINT — Step 1 ─────────────┐
-         * │ await client.writeContract({                                │
-         * │   address: CONTRACT_ADDRESS,                               │
-         * │   method:  "submit_proof",                                  │
-         * │   args:    [campaignId, proofUrl],                          │
-         * │   account: this._account,                                  │
-         * │ });                                                         │
-         * └───────────────────────────────────────────────────────────┘
-         */
+        // ── Step 1 : submit proof URL + trigger LLM evaluation ───────
         App.setStep('vstep-1', 'active');
-        document.getElementById('progress-label').textContent = 'Submitting proof to contract…';
-        await sleep(1100);
+        document.getElementById('progress-label').textContent = 'Submitting proof to GenLayer contract…';
+
+        const txHash = await window.GL.verifyAndPay(this._account, campaignId, proofUrl);
+        console.log('[SponsorShield] verify_and_pay txHash:', txHash);
         App.setStep('vstep-1', 'done');
         document.getElementById('progress-bar').style.width = '20%';
 
-        /*
-         * ┌─── GENLAYERJS SDK INTEGRATION POINT — Step 2 ─────────────┐
-         * │ await client.writeContract({                                │
-         * │   address: CONTRACT_ADDRESS, method: "evaluate_proof",     │
-         * │   args: [campaignId],                                      │
-         * │ });                                                         │
-         * └───────────────────────────────────────────────────────────┘
-         */
+        // ── Step 2 : validators rendering the proof URL ──────────────
         App.setStep('vstep-2', 'active');
         document.getElementById('progress-label').textContent = 'Validators rendering proof URL…';
-        Toast.info('Validators Active', 'N validators scraping your URL now.', 2500);
-        // Animate validators lighting up
+        Toast.info('Validators Active', '5 GenLayer validators checking your URL now.', 3000);
         for (const id of ['vn1','vn2','vn3','vn4','vn5']) {
-          App.setValidatorNode(id, 'active'); await sleep(340);
+          App.setValidatorNode(id, 'active'); await sleep(300);
         }
-        await sleep(600);
-        App.setStep('vstep-2', 'done');
         document.getElementById('progress-bar').style.width = '40%';
 
+        // ── Step 3 : wait for LLM evaluation to finalise on-chain ────
+        App.setStep('vstep-2', 'done');
         App.setStep('vstep-3', 'active');
         document.getElementById('progress-label').textContent = 'LLM evaluating compliance…';
-        await sleep(1800);
-        App.setStep('vstep-3', 'done');
-        document.getElementById('progress-bar').style.width = '65%';
+        document.getElementById('progress-bar').style.width = '55%';
 
+        const { TransactionStatus } = await import("https://esm.sh/genlayer-js@latest/types");
+        const client = window.GL.getReadClient();
+        const receipt = await client.waitForTransactionReceipt({
+          hash:   txHash,
+          status: TransactionStatus.FINALIZED,
+        });
+
+        App.setStep('vstep-3', 'done');
         App.setStep('vstep-4', 'active');
         document.getElementById('progress-label').textContent = 'strict_eq enforcing consensus…';
-        await sleep(1400);
-        App.setStep('vstep-4', 'done');
-        document.getElementById('progress-bar').style.width = '85%';
+        document.getElementById('progress-bar').style.width = '75%';
+        await sleep(800);
 
+        // ── Step 4-5 : read the final verdict from contract ──────────
+        const proofStatus = await window.GL.getProofStatus(campaignId);
+        const verdict = (proofStatus?.verdict ?? receipt?.txExecutionResultName ?? 'REJECTED').toUpperCase();
+
+        App.setStep('vstep-4', 'done');
         App.setStep('vstep-5', 'active');
         document.getElementById('progress-label').textContent = 'Finalising verdict on-chain…';
-        await sleep(900);
+        document.getElementById('progress-bar').style.width = '90%';
+        await sleep(500);
         App.setStep('vstep-5', 'done');
         document.getElementById('progress-bar').style.width = '100%';
 
-        /*
-         * ┌─── GENLAYERJS SDK INTEGRATION POINT — Read verdict ───────┐
-         * │ const status = await client.readContract({                 │
-         * │   address: CONTRACT_ADDRESS,                               │
-         * │   method:  "get_proof_status",                              │
-         * │   args:    [campaignId],                                   │
-         * │ });                                                         │
-         * │ const verdict = status.verdict; // "APPROVED" | "REJECTED" │
-         * └───────────────────────────────────────────────────────────┘
-         */
-        const isApproved = Math.random() > 0.35;
-        const verdict    = isApproved ? 'APPROVED' : 'REJECTED';
-
-        // Mark validators done / x
+        const isApproved = verdict === 'APPROVED';
         ['vn1','vn2','vn3','vn4','vn5'].forEach(id => App.setValidatorNode(id, isApproved ? 'done' : ''));
-
         document.getElementById('progress-label').textContent = 'Complete.';
         this._renderVerdict(verdict, campaignId);
 
@@ -1639,11 +1690,11 @@
           Toast.error('Proof Rejected', `<strong>${campaignId}</strong> — rules not satisfied.`, 7000);
         }
 
-        console.log('[SponsorShield] evaluate_proof verdict:', { campaignId, proofUrl, verdict });
+        console.log('[SponsorShield] verify_and_pay →', { campaignId, proofUrl, verdict, receipt });
 
       } catch (err) {
-        Toast.error('Evaluation Failed', err.message);
-        console.error('[SponsorShield] evaluate_proof error:', err);
+        Toast.error('Evaluation Failed', err.message || 'Transaction reverted or timed out.');
+        console.error('[SponsorShield] verify_and_pay error:', err);
       } finally {
         App.setLoading('btn-claim-payout', false);
       }
@@ -1680,64 +1731,44 @@
         return;
       }
 
-      document.getElementById('status-display').style.display = 'none';
-      document.getElementById('status-empty').style.display   = 'none';
+      document.getElementById('status-display').style.display  = 'none';
+      document.getElementById('status-empty').style.display    = 'none';
       document.getElementById('status-skeleton').style.display = 'block';
       App.setLoading('btn-lookup', true, 'Fetching…');
 
       try {
-        /*
-         * ┌─── GENLAYERJS SDK INTEGRATION POINT ──────────────────────┐
-         * │ const [campaign, proof] = await Promise.all([              │
-         * │   client.readContract({ address:CONTRACT_ADDRESS,          │
-         * │     method:"get_campaign",    args:[campaignId] }),        │
-         * │   client.readContract({ address:CONTRACT_ADDRESS,          │
-         * │     method:"get_proof_status",args:[campaignId] }),        │
-         * │ ]);                                                         │
-         * └───────────────────────────────────────────────────────────┘
-         */
-        await sleep(950);
-
-        const verdicts = ['PENDING','APPROVED','REJECTED'];
-        const v = verdicts[Math.floor(Math.random() * verdicts.length)];
-        const hasProof = v !== 'PENDING';
-        const campaign = {
-          campaign_id: campaignId,
-          sponsor:     '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-          rules:       'Post a tweet mentioning @SponsorShield with #Web3Sponsor. Must be publicly visible with ≥50 likes.',
-          budget:      500,
-          active:      v === 'PENDING',
-        };
-        const proof = {
-          creator:   hasProof ? '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' : '',
-          proof_url: hasProof ? 'https://x.com/creator123/status/1234567890' : '',
-          verdict:   v,
-        };
+        // ── Real GenLayer readContract calls (no gas, instant) ───────
+        const [campaign, proof] = await Promise.all([
+          window.GL.getCampaign(campaignId),
+          window.GL.getProofStatus(campaignId),
+        ]);
 
         const $ = id => document.getElementById(id);
-        $('sd-id').textContent      = campaign.campaign_id;
-        $('sd-sponsor').textContent = campaign.sponsor || '—';
-        $('sd-budget').textContent  = campaign.budget ? `${campaign.budget} GL` : '—';
-        $('sd-rules').textContent   = campaign.rules || '—';
-        $('sd-creator').textContent  = proof.creator || '—';
-        $('sd-proof-url').innerHTML  = proof.proof_url
+        $('sd-id').textContent      = campaign?.campaign_id ?? campaignId;
+        $('sd-sponsor').textContent = campaign?.sponsor     || '—';
+        $('sd-budget').textContent  = campaign?.budget != null ? `${campaign.budget} GL` : '—';
+        $('sd-rules').textContent   = campaign?.rules       || '—';
+        $('sd-creator').textContent  = proof?.creator       || '—';
+        $('sd-proof-url').innerHTML  = proof?.proof_url
           ? `<a href="${proof.proof_url}" target="_blank" rel="noopener" style="color:var(--mint);text-decoration:underline;">${proof.proof_url}</a>`
           : '—';
 
-        $('sd-active').innerHTML  = `<span class="badge badge-${campaign.active ? 'active' : 'closed'}">${campaign.active ? 'Active' : 'Closed'}</span>`;
-        $('sd-verdict').innerHTML = `<span class="badge badge-${v.toLowerCase()}">${v}</span>`;
+        const isActive = campaign?.active ?? false;
+        const verdict  = (proof?.verdict ?? 'PENDING').toUpperCase();
+        $('sd-active').innerHTML  = `<span class="badge badge-${isActive ? 'active' : 'closed'}">${isActive ? 'Active' : 'Closed'}</span>`;
+        $('sd-verdict').innerHTML = `<span class="badge badge-${verdict.toLowerCase()}">${verdict}</span>`;
 
         document.getElementById('status-skeleton').style.display = 'none';
         document.getElementById('status-display').style.display  = 'block';
         document.getElementById('status-display').classList.add('panel-enter');
 
-        Toast.success('Campaign Loaded', `On-chain state for <strong>${campaignId}</strong>.`);
+        Toast.success('Campaign Loaded', `Live on-chain state for <strong>${campaignId}</strong>.`);
         console.log('[SponsorShield] readContract →', { campaign, proof });
 
       } catch (err) {
         document.getElementById('status-skeleton').style.display = 'none';
         document.getElementById('status-empty').style.display    = 'block';
-        Toast.error('Lookup Failed', err.message || 'Campaign not found.');
+        Toast.error('Lookup Failed', err.message || 'Campaign not found on chain.');
         console.error('[SponsorShield] readContract error:', err);
       } finally {
         App.setLoading('btn-lookup', false);
@@ -1752,12 +1783,35 @@
     // Ensure sponsor panel visible
     App.switchTab('sponsor');
 
+    // Show real contract address immediately
+    const shortAddr = CONTRACT_ADDRESS.slice(0,6) + '…' + CONTRACT_ADDRESS.slice(-4);
+    const footerEl  = document.getElementById('footer-contract-addr');
+    if (footerEl) footerEl.textContent = shortAddr;
+
     // Welcome toast
     setTimeout(() => Toast.info(
       '⬡ SponsorShield Ready',
-      'Click "Connect Wallet" in the nav to get started.',
+      'Click "Connect Wallet" to link MetaMask and interact with the live contract.',
       5500
     ), 900);
+
+    // Restore session once the GL module bridge is ready
+    // (ES modules run after DOMContentLoaded, so we poll briefly)
+    function tryRestoreSession(attempts) {
+      if (window.GL && typeof window.GL.getMetaMaskAccount === 'function') {
+        window.GL.getMetaMaskAccount().then(account => {
+          if (account) {
+            SDK._account   = account;
+            SDK._connected = true;
+            WalletUI._syncConnectedUI(account);
+            Toast.success('Session Restored', `Wallet ${account.slice(0,6)}…${account.slice(-4)} reconnected.`, 3500);
+          }
+        }).catch(() => {});
+      } else if (attempts > 0) {
+        setTimeout(() => tryRestoreSession(attempts - 1), 80);
+      }
+    }
+    setTimeout(() => tryRestoreSession(15), 200);
 
     // Close dropdown on Escape key
     document.addEventListener('keydown', e => {
