@@ -1137,39 +1137,6 @@
   </footer>
 
   <!-- ════════════════════════════════════════════
-       GENLAYER SDK — ES Module bridge
-       Loads genlayerclient.js as an ES module and
-       exposes all helpers as window.GL so the
-       classic inline script below can access them.
-  ════════════════════════════════════════════ -->
-  <script type="module">
-    import {
-      CONTRACT_ADDRESS,
-      getReadClient,
-      getWriteClient,
-      connectMetaMask,
-      getMetaMaskAccount,
-      getCampaign,
-      getProofStatus,
-      createCampaign,
-      verifyAndPay,
-    } from "./genlayerclient.js";
-
-    // Expose everything on window.GL for access by the classic <script> below
-    window.GL = {
-      CONTRACT_ADDRESS,
-      getReadClient,
-      getWriteClient,
-      connectMetaMask,
-      getMetaMaskAccount,
-      getCampaign,
-      getProofStatus,
-      createCampaign,
-      verifyAndPay,
-    };
-  </script>
-
-  <!-- ════════════════════════════════════════════
        JAVASCRIPT
   ════════════════════════════════════════════ -->
   <script>
@@ -1446,7 +1413,28 @@
 
       try {
         // ── Real MetaMask / EIP-1193 wallet connection ────────────────
-        const account = await window.GL.connectMetaMask();
+        if (typeof window.ethereum === "undefined") {
+          throw new Error("MetaMask not detected. Please install MetaMask and reload this page.");
+        }
+
+        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        if (!accounts || accounts.length === 0) throw new Error("No accounts returned from MetaMask.");
+
+        const account = accounts[0];
+        
+        try {
+          await window.ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+                chainId: "0xC7C7",
+                chainName: "GenLayer Studionet",
+                nativeCurrency: { name: "GL", symbol: "GL", decimals: 18 },
+                rpcUrls: ["http://127.0.0.1:4000/api"],
+                blockExplorerUrls: [],
+            }],
+          });
+        } catch (e) {}
+
         SDK._account   = account;
         SDK._connected = true;
 
@@ -1531,6 +1519,16 @@
   const SDK = {
     _account: null,
     _connected: false,
+    
+    // Internal lazy clients
+    async _getClient(write = false) {
+      const { createClient } = await import("https://esm.sh/genlayer-js@latest");
+      const { studionet } = await import("https://esm.sh/genlayer-js@latest/chains");
+      if (write && this._account) {
+        return createClient({ chain: studionet, account: this._account });
+      }
+      return createClient({ chain: studionet });
+    },
 
     /* ── Connect Wallet (legacy alias for compatibility) ── */
     async connectWallet() {
@@ -1566,16 +1564,21 @@
         App.setStep('flow-step-3', 'active');
 
         // ── Real GenLayer writeContract call ─────────────────────────
-        const txHash = await window.GL.createCampaign(this._account, rules, budget);
+        const client = await this._getClient(true);
+        const txHash = await client.writeContract({
+          address: CONTRACT_ADDRESS,
+          functionName: "create_campaign",
+          args: [rules, budget],
+          account: this._account,
+        });
         console.log('[SponsorShield] create_campaign txHash:', txHash);
 
         Toast.info('Tx Broadcast', `Hash: ${txHash.slice(0,10)}… — Awaiting finalization.`, 4000);
         App.setStep('flow-step-3', 'done');
         App.setStep('flow-step-4', 'active');
 
-        // Wait for the transaction to be finalized using GenLayer receipt polling
+        // Wait for the transaction to be finalized
         const { TransactionStatus } = await import("https://esm.sh/genlayer-js@latest/types");
-        const client = window.GL.getReadClient();
         const receipt = await client.waitForTransactionReceipt({
           hash:   txHash,
           status: TransactionStatus.FINALIZED,
@@ -1634,7 +1637,13 @@
         App.setStep('vstep-1', 'active');
         document.getElementById('progress-label').textContent = 'Submitting proof to GenLayer contract…';
 
-        const txHash = await window.GL.verifyAndPay(this._account, campaignId, proofUrl);
+        const client = await this._getClient(true);
+        const txHash = await client.writeContract({
+          address: CONTRACT_ADDRESS,
+          functionName: "verify_and_pay",
+          args: [campaignId, proofUrl, this._account],
+          account: this._account,
+        });
         console.log('[SponsorShield] verify_and_pay txHash:', txHash);
         App.setStep('vstep-1', 'done');
         document.getElementById('progress-bar').style.width = '20%';
@@ -1655,7 +1664,6 @@
         document.getElementById('progress-bar').style.width = '55%';
 
         const { TransactionStatus } = await import("https://esm.sh/genlayer-js@latest/types");
-        const client = window.GL.getReadClient();
         const receipt = await client.waitForTransactionReceipt({
           hash:   txHash,
           status: TransactionStatus.FINALIZED,
@@ -1668,7 +1676,12 @@
         await sleep(800);
 
         // ── Step 4-5 : read the final verdict from contract ──────────
-        const proofStatus = await window.GL.getProofStatus(campaignId);
+        const readClient = await this._getClient(false);
+        const proofStatus = await readClient.readContract({
+          address: CONTRACT_ADDRESS,
+          functionName: "get_proof_status",
+          args: [campaignId],
+        });
         const verdict = (proofStatus?.verdict ?? receipt?.txExecutionResultName ?? 'REJECTED').toUpperCase();
 
         App.setStep('vstep-4', 'done');
@@ -1738,9 +1751,10 @@
 
       try {
         // ── Real GenLayer readContract calls (no gas, instant) ───────
+        const client = await this._getClient(false);
         const [campaign, proof] = await Promise.all([
-          window.GL.getCampaign(campaignId),
-          window.GL.getProofStatus(campaignId),
+          client.readContract({ address: CONTRACT_ADDRESS, functionName: "get_campaign", args: [campaignId] }),
+          client.readContract({ address: CONTRACT_ADDRESS, functionName: "get_proof_status", args: [campaignId] }),
         ]);
 
         const $ = id => document.getElementById(id);
@@ -1795,23 +1809,17 @@
       5500
     ), 900);
 
-    // Restore session once the GL module bridge is ready
-    // (ES modules run after DOMContentLoaded, so we poll briefly)
-    function tryRestoreSession(attempts) {
-      if (window.GL && typeof window.GL.getMetaMaskAccount === 'function') {
-        window.GL.getMetaMaskAccount().then(account => {
-          if (account) {
-            SDK._account   = account;
-            SDK._connected = true;
-            WalletUI._syncConnectedUI(account);
-            Toast.success('Session Restored', `Wallet ${account.slice(0,6)}…${account.slice(-4)} reconnected.`, 3500);
-          }
-        }).catch(() => {});
-      } else if (attempts > 0) {
-        setTimeout(() => tryRestoreSession(attempts - 1), 80);
-      }
+    // Restore session on load if MetaMask is already connected
+    if (typeof window.ethereum !== 'undefined') {
+      window.ethereum.request({ method: 'eth_accounts' }).then(accounts => {
+        if (accounts && accounts.length > 0) {
+          SDK._account   = accounts[0];
+          SDK._connected = true;
+          WalletUI._syncConnectedUI(accounts[0]);
+          Toast.success('Session Restored', `Wallet ${accounts[0].slice(0,6)}…${accounts[0].slice(-4)} reconnected.`, 3500);
+        }
+      }).catch(() => {});
     }
-    setTimeout(() => tryRestoreSession(15), 200);
 
     // Close dropdown on Escape key
     document.addEventListener('keydown', e => {
